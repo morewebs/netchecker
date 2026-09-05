@@ -32,145 +32,155 @@ class AndroidHome extends StatelessWidget {
               onCopyReport: () => copyReport(bCtx, engine),
               onShowHelp: () => _showHelp(bCtx),
               child: Scaffold(
-            backgroundColor: kInk,
-            appBar: PreferredSize(
-              preferredSize: const Size.fromHeight(56),
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: kInk,
-                  border: Border(bottom: BorderSide(color: kLine, width: 1)),
-                ),
-                child: SafeArea(
-                  bottom: false,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    child: Row(
-                      children: [
-                        // Brand & Live Pulse
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF18181B),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: kLine),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 6,
-                                height: 6,
-                                decoration: BoxDecoration(
-                                  color: isRunning ? kOk : kTo,
-                                  shape: BoxShape.circle,
-                                  boxShadow: isRunning
-                                      ? [
-                                          BoxShadow(
-                                            color: kOk.withValues(alpha: 0.6),
-                                            blurRadius: 4,
-                                            spreadRadius: 1,
-                                          ),
-                                        ]
-                                      : null,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              const Text(
-                                'NetChecker',
-                                style: TextStyle(
-                                  fontFamily: 'Poppins',
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                  letterSpacing: -0.2,
-                                  color: kPaper,
-                                ),
-                              ),
-                            ],
-                          ),
+                backgroundColor: kInk,
+                appBar: PreferredSize(
+                  preferredSize: const Size.fromHeight(56),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(bCtx).colorScheme.surfaceContainerLow,
+                      border: Border(
+                        bottom: BorderSide(
+                          color: Theme.of(bCtx).colorScheme.outlineVariant,
+                          width: 1,
                         ),
-                        const SizedBox(width: 8),
-
-                        // Stat Badges
-                        Expanded(
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: [
-                                _MetricPill(
-                                  label: '${engine.okCount} ok',
-                                  color: kOk,
+                      ),
+                    ),
+                    child: SafeArea(
+                      bottom: false,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        child: Row(
+                          children: [
+                            // Brand & Live Pulse (M3 Badge)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: Theme.of(bCtx).colorScheme.surfaceContainerHigh,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: Theme.of(bCtx).colorScheme.outlineVariant,
                                 ),
-                                const SizedBox(width: 4),
-                                _MetricPill(
-                                  label: '${engine.failCount} down',
-                                  color: engine.failCount > 0 ? kFail : kSubtle,
-                                ),
-                                const SizedBox(width: 4),
-                                _MetricPill(
-                                  label: '${engine.checkedCount}/$totalDomains',
-                                  color: kMute,
-                                ),
-                              ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                      color: isRunning ? kOk : kTo,
+                                      shape: BoxShape.circle,
+                                      boxShadow: isRunning
+                                          ? [
+                                              BoxShadow(
+                                                color: kOk.withValues(alpha: 0.5),
+                                                blurRadius: 6,
+                                                spreadRadius: 1.5,
+                                              ),
+                                            ]
+                                          : null,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    'NetChecker',
+                                    style: TextStyle(
+                                      fontFamily: 'Poppins',
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
+                                      letterSpacing: -0.2,
+                                      color: kPaper,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
+                            const SizedBox(width: 8),
 
-                        // Action Buttons
-                        _ActionPill(
-                          label: isRunning ? 'pause' : 'run',
-                          icon: isRunning ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                          color: isRunning ? kOk : kTo,
-                          onTap: () => engine.setRunning(!isRunning),
+                            // Material 3 Stat Badges
+                            Expanded(
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: [
+                                    _MetricPill(
+                                      label: '${engine.okCount} ok',
+                                      color: kOk,
+                                    ),
+                                    const SizedBox(width: 5),
+                                    _MetricPill(
+                                      label: '${engine.failCount} down',
+                                      color: engine.failCount > 0 ? kFail : kSubtle,
+                                    ),
+                                    const SizedBox(width: 5),
+                                    _MetricPill(
+                                      label: '${engine.checkedCount}/$totalDomains',
+                                      color: kMute,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+
+                            // Material 3 Action Pills
+                            _ActionPill(
+                              label: isRunning ? 'pause' : 'run',
+                              icon: isRunning ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                              color: isRunning ? kOk : kTo,
+                              isTonalActive: isRunning,
+                              onTap: () => engine.setRunning(!isRunning),
+                            ),
+                            const SizedBox(width: 5),
+                            _ActionPill(
+                              label: 'copy',
+                              icon: Icons.copy_rounded,
+                              color: kPaper,
+                              onTap: () => copyReport(bCtx, engine),
+                            ),
+                            const SizedBox(width: 5),
+                            _ActionPill(
+                              label: 'set',
+                              icon: Icons.tune_rounded,
+                              color: kPaper,
+                              onTap: () => _openSettings(bCtx),
+                            ),
+                            const SizedBox(width: 5),
+                            _ActionPill(
+                              label: '?',
+                              icon: Icons.keyboard_outlined,
+                              color: kMute,
+                              onTap: () => _showHelp(bCtx),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 4),
-                        _ActionPill(
-                          label: 'copy',
-                          icon: Icons.copy_rounded,
-                          color: kPaper,
-                          onTap: () => copyReport(bCtx, engine),
-                        ),
-                        const SizedBox(width: 4),
-                        _ActionPill(
-                          label: 'set',
-                          icon: Icons.tune_rounded,
-                          color: kPaper,
-                          onTap: () => _openSettings(bCtx),
-                        ),
-                        const SizedBox(width: 4),
-                        _ActionPill(
-                          label: '?',
-                          icon: Icons.keyboard_outlined,
-                          color: kMute,
-                          onTap: () => _showHelp(bCtx),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
+                body: SafeArea(
+                  child: ProbeBoard(engine: engine),
+                ),
               ),
-            ),
-            body: SafeArea(
-              child: ProbeBoard(engine: engine),
-            ),
-          ),
+            );
+          },
         );
       },
     );
-  },
-);
-}
+  }
 
   Future<void> _openSettings(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      backgroundColor: const Color(0xFF0F0F12),
+      backgroundColor: colorScheme.surfaceContainerLow,
       barrierColor: const Color(0x99000000),
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        side: BorderSide(color: kLine, width: 1),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (ctx) {
         return SizedBox(
@@ -179,7 +189,7 @@ class AndroidHome extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 16, 12),
+                padding: const EdgeInsets.fromLTRB(20, 2, 16, 12),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -188,9 +198,9 @@ class AndroidHome extends StatelessWidget {
                       children: [
                         Text(
                           'Settings',
-                          style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                          style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
                                 fontWeight: FontWeight.w600,
-                                fontSize: 16,
+                                fontSize: 18,
                               ),
                         ),
                         const SizedBox(height: 2),
@@ -198,27 +208,27 @@ class AndroidHome extends StatelessWidget {
                           'Configure probe timers, targeting, and exports',
                           style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
                                 color: kMute,
-                                fontSize: 11,
+                                fontSize: 11.5,
                               ),
                         ),
                       ],
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close_rounded, size: 18),
+                      icon: const Icon(Icons.close_rounded, size: 20),
                       style: IconButton.styleFrom(
-                        backgroundColor: const Color(0xFF18181B),
+                        backgroundColor: colorScheme.surfaceContainerHigh,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(6),
-                          side: const BorderSide(color: kLine),
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(color: colorScheme.outlineVariant),
                         ),
-                        padding: const EdgeInsets.all(6),
+                        padding: const EdgeInsets.all(8),
                       ),
                       onPressed: () => Navigator.pop(ctx),
                     ),
                   ],
                 ),
               ),
-              const Divider(height: 1),
+              Divider(height: 1, color: colorScheme.outlineVariant),
               Expanded(child: SettingsForm(engine: engine)),
             ],
           ),
@@ -237,18 +247,18 @@ class _MetricPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
       ),
       child: Text(
         label,
         style: TextStyle(
           fontFamily: 'Space Mono',
           fontSize: 10,
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.w600,
           color: color,
         ),
       ),
@@ -262,40 +272,56 @@ class _ActionPill extends StatelessWidget {
     required this.icon,
     required this.color,
     required this.onTap,
+    this.isTonalActive = false,
   });
 
   final String label;
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
+  final bool isTonalActive;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
-        decoration: BoxDecoration(
-          color: const Color(0xFF18181B),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: kLine),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 12.5, color: color),
-            const SizedBox(width: 3.5),
-            Text(
-              label,
-              style: TextStyle(
-                fontFamily: 'Space Mono',
-                fontSize: 10.5,
-                fontWeight: FontWeight.w600,
-                color: color,
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    final bgColor = isTonalActive
+        ? color.withValues(alpha: 0.16)
+        : colorScheme.surfaceContainerHigh;
+
+    final borderColor = isTonalActive
+        ? color.withValues(alpha: 0.4)
+        : colorScheme.outlineVariant;
+
+    return Material(
+      color: bgColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: borderColor, width: 1),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        splashColor: color.withValues(alpha: 0.15),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 13.5, color: color),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontFamily: 'Space Mono',
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -15,79 +15,81 @@ class ShortcutsCheatsheetDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Dialog(
-      backgroundColor: const Color(0xFF121215),
+      backgroundColor: colorScheme.surfaceContainerHigh,
+      elevation: 6,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: const BorderSide(color: kLine, width: 1),
+        borderRadius: BorderRadius.circular(28),
+        side: BorderSide(color: colorScheme.outlineVariant, width: 1),
       ),
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: Container(
         constraints: const BoxConstraints(maxWidth: 580, maxHeight: 680),
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Header
+            // Material 3 Dialog Header
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF18181B),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: kLine),
+                    color: colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: colorScheme.outlineVariant),
                   ),
                   child: const Icon(
                     Icons.keyboard_outlined,
-                    size: 20,
+                    size: 22,
                     color: kPaper,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Keyboard & Controller Shortcuts',
-                        style: TextStyle(
-                          fontFamily: 'Poppins',
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                          color: kPaper,
-                        ),
+                        style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16.5,
+                              color: kPaper,
+                            ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         'Navigate and control NetChecker via keyboard or gamepad',
-                        style: TextStyle(
-                          fontFamily: 'Poppins',
-                          fontSize: 11,
-                          color: kMute.withValues(alpha: 0.8),
-                        ),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                              fontSize: 11.5,
+                              color: kMute,
+                            ),
                       ),
                     ],
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close_rounded, size: 18),
+                  icon: const Icon(Icons.close_rounded, size: 20),
                   style: IconButton.styleFrom(
-                    backgroundColor: const Color(0xFF18181B),
+                    backgroundColor: colorScheme.surfaceContainerHighest,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6),
-                      side: const BorderSide(color: kLine),
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: colorScheme.outlineVariant),
                     ),
-                    padding: const EdgeInsets.all(6),
+                    padding: const EdgeInsets.all(8),
                   ),
                   onPressed: () => Navigator.of(context).pop(),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            const Divider(height: 1, color: kLine),
-            const SizedBox(height: 12),
+            Divider(height: 1, color: colorScheme.outlineVariant),
+            const SizedBox(height: 14),
 
             // Scrollable Sections
             Expanded(
@@ -126,7 +128,7 @@ class ShortcutsCheatsheetDialog extends StatelessWidget {
                       keyboard: ['?', 'F1'],
                       controller: 'Select / Guide',
                     ),
-                    SizedBox(height: 14),
+                    SizedBox(height: 16),
 
                     _SectionHeader(title: 'GRID 2D NAVIGATION'),
                     _ShortcutRow(
@@ -149,7 +151,7 @@ class ShortcutsCheatsheetDialog extends StatelessWidget {
                       keyboard: ['C'],
                       controller: 'L-Stick Click',
                     ),
-                    SizedBox(height: 14),
+                    SizedBox(height: 16),
 
                     _SectionHeader(title: 'ITEM PROFILE PAGE'),
                     _ShortcutRow(
@@ -191,12 +193,12 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 6, bottom: 8),
+      padding: const EdgeInsets.only(top: 4, bottom: 8),
       child: Text(
         title,
         style: const TextStyle(
           fontFamily: 'Space Mono',
-          fontSize: 10,
+          fontSize: 10.5,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.8,
           color: kPaper,
@@ -219,13 +221,16 @@ class _ShortcutRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF18181B),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: kLine),
+        color: colorScheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
@@ -234,7 +239,7 @@ class _ShortcutRow extends StatelessWidget {
               action,
               style: const TextStyle(
                 fontFamily: 'Poppins',
-                fontSize: 11.5,
+                fontSize: 12,
                 color: kPaper,
               ),
             ),
@@ -244,10 +249,10 @@ class _ShortcutRow extends StatelessWidget {
           // Controller Badge
           if (controller != '—') ...[
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: const Color(0x1410B981),
-                borderRadius: BorderRadius.circular(4),
+                color: kOk.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: kOk.withValues(alpha: 0.3)),
               ),
               child: Text(
@@ -271,10 +276,10 @@ class _ShortcutRow extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(left: 4),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF27272A),
-                      borderRadius: BorderRadius.circular(4),
+                      color: colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: kPaper.withValues(alpha: 0.2)),
                     ),
                     child: Text(

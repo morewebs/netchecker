@@ -109,7 +109,7 @@ class _RouteMapPageState extends State<RouteMapPage> {
     return Scaffold(
       backgroundColor: kInk,
       appBar: AppBar(
-        backgroundColor: kInk,
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
@@ -142,30 +142,30 @@ class _RouteMapPageState extends State<RouteMapPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.copy_rounded, color: kPaper, size: 16),
-            tooltip: 'Copy Route',
+            tooltip: 'Copy Route (C)',
             style: IconButton.styleFrom(
-              backgroundColor: const Color(0xFF18181B),
+              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(6),
-                side: const BorderSide(color: kLine),
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
               ),
               padding: const EdgeInsets.all(8),
             ),
             onPressed: hops.isNotEmpty ? _copyTraceReport : null,
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 6),
           IconButton(
             icon: Icon(
               _isTracing ? Icons.stop_rounded : Icons.refresh_rounded,
               color: _isTracing ? kFail : kOk,
               size: 18,
             ),
-            tooltip: _isTracing ? 'Stop Trace' : 'Retrace',
+            tooltip: _isTracing ? 'Stop Trace' : 'Retrace (R)',
             style: IconButton.styleFrom(
-              backgroundColor: const Color(0xFF18181B),
+              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(6),
-                side: const BorderSide(color: kLine),
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
               ),
               padding: const EdgeInsets.all(8),
             ),
@@ -180,9 +180,9 @@ class _RouteMapPageState extends State<RouteMapPage> {
           ),
           const SizedBox(width: 12),
         ],
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(1),
-          child: Divider(height: 1, color: kLine),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
         ),
       ),
       body: Column(

@@ -30,39 +30,69 @@ class DesktopHome extends StatelessWidget {
       barrierDismissible: true,
       barrierLabel: 'Settings',
       barrierColor: const Color(0x99000000),
+      transitionDuration: const Duration(milliseconds: 240),
+      transitionBuilder: (ctx, anim, secondaryAnim, child) {
+        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        );
+      },
       pageBuilder: (ctx, a, b) {
+        final theme = Theme.of(ctx);
+        final colorScheme = theme.colorScheme;
+
         return Align(
           alignment: Alignment.centerRight,
           child: Material(
-            color: const Color(0xFF0F0F12),
+            color: colorScheme.surfaceContainerLow,
+            elevation: 8,
+            shape: RoundedRectangleBorder(
+              borderRadius: const BorderRadius.horizontal(left: Radius.circular(24)),
+              side: BorderSide(color: colorScheme.outlineVariant, width: 1),
+            ),
             child: Container(
-              width: 380,
+              width: 400,
               height: MediaQuery.sizeOf(ctx).height,
+              clipBehavior: Clip.antiAlias,
               decoration: const BoxDecoration(
-                border: Border(left: BorderSide(color: kLine, width: 1)),
+                borderRadius: BorderRadius.horizontal(left: Radius.circular(24)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+                    padding: const EdgeInsets.fromLTRB(20, 18, 14, 14),
                     child: Row(
                       children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: colorScheme.outlineVariant),
+                          ),
+                          child: const Icon(Icons.tune_rounded, size: 18, color: kPaper),
+                        ),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 'Settings',
-                                style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                                style: theme.textTheme.titleLarge?.copyWith(
                                       fontWeight: FontWeight.w600,
-                                      fontSize: 16,
+                                      fontSize: 17,
                                     ),
                               ),
                               const SizedBox(height: 2),
                               Text(
                                 'Configure probe timers, targeting, and exports',
-                                style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                                style: theme.textTheme.bodySmall?.copyWith(
                                       color: kMute,
                                       fontSize: 11,
                                     ),
@@ -74,18 +104,18 @@ class DesktopHome extends StatelessWidget {
                           onPressed: () => Navigator.pop(ctx),
                           icon: const Icon(Icons.close_rounded, size: 18),
                           style: IconButton.styleFrom(
-                            backgroundColor: const Color(0xFF18181B),
+                            backgroundColor: colorScheme.surfaceContainerHigh,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(6),
-                              side: const BorderSide(color: kLine),
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(color: colorScheme.outlineVariant),
                             ),
-                            padding: const EdgeInsets.all(6),
+                            padding: const EdgeInsets.all(8),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const Divider(height: 1),
+                  Divider(height: 1, color: colorScheme.outlineVariant),
                   Expanded(
                     child: SettingsForm(
                       engine: engine,

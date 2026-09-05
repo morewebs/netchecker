@@ -272,26 +272,34 @@ class _SettingsFormState extends State<SettingsForm> {
                 ),
                 const SizedBox(height: 6),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF121215),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: kLine),
+                    color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
                       isExpanded: true,
+                      borderRadius: BorderRadius.circular(16),
                       value: nics.any((n) => n.id == _draft.nicId)
                           ? _draft.nicId
                           : NicChoice.any.id,
-                      dropdownColor: const Color(0xFF18181B),
+                      dropdownColor: const Color(0xFF1A1A20),
+                      icon: const Icon(Icons.arrow_drop_down_rounded, color: kMute),
                       items: [
                         for (final n in nics)
                           DropdownMenuItem(
                             value: n.id,
-                            child: Text(
-                              n.label,
-                              style: const TextStyle(fontSize: 12),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.lan_outlined, size: 15, color: kMute),
+                                const SizedBox(width: 8),
+                                Text(
+                                  n.label,
+                                  style: const TextStyle(fontSize: 12.5, color: kPaper),
+                                ),
+                              ],
                             ),
                           ),
                       ],
@@ -345,33 +353,35 @@ class _SettingsFormState extends State<SettingsForm> {
               ),
               const SizedBox(height: 6),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF121215),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: kLine),
+                  color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                 ),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
                     isExpanded: true,
+                    borderRadius: BorderRadius.circular(16),
                     value: _draft.exportFormat,
-                    dropdownColor: const Color(0xFF18181B),
+                    dropdownColor: const Color(0xFF1A1A20),
+                    icon: const Icon(Icons.arrow_drop_down_rounded, color: kMute),
                     items: const [
                       DropdownMenuItem(
                         value: 'markdown',
-                        child: Text('Markdown Table (.md)', style: TextStyle(fontSize: 12)),
+                        child: Text('Markdown Table (.md)', style: TextStyle(fontSize: 12.5, color: kPaper)),
                       ),
                       DropdownMenuItem(
                         value: 'csv',
-                        child: Text('CSV Spreadsheet (.csv)', style: TextStyle(fontSize: 12)),
+                        child: Text('CSV Spreadsheet (.csv)', style: TextStyle(fontSize: 12.5, color: kPaper)),
                       ),
                       DropdownMenuItem(
                         value: 'json',
-                        child: Text('JSON Machine-Readable (.json)', style: TextStyle(fontSize: 12)),
+                        child: Text('JSON Machine-Readable (.json)', style: TextStyle(fontSize: 12.5, color: kPaper)),
                       ),
                       DropdownMenuItem(
                         value: 'plaintext',
-                        child: Text('Plaintext Summary (.txt)', style: TextStyle(fontSize: 12)),
+                        child: Text('Plaintext Summary (.txt)', style: TextStyle(fontSize: 12.5, color: kPaper)),
                       ),
                     ],
                     onChanged: (fmt) {
@@ -448,6 +458,8 @@ class _SettingsFormState extends State<SettingsForm> {
                   foregroundColor: kFail,
                   side: BorderSide(color: kFail.withValues(alpha: 0.3)),
                   backgroundColor: kFail.withValues(alpha: 0.05),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  minimumSize: const Size(48, 40),
                 ),
               ),
             ],
@@ -458,12 +470,14 @@ class _SettingsFormState extends State<SettingsForm> {
         // 5. Apply Button
         FilledButton.icon(
           onPressed: _save,
-          icon: const Icon(Icons.check_rounded, size: 16),
+          icon: const Icon(Icons.check_rounded, size: 18),
           label: const Text('Apply Changes'),
           style: FilledButton.styleFrom(
             backgroundColor: kPaper,
             foregroundColor: kInk,
             padding: const EdgeInsets.symmetric(vertical: 14),
+            minimumSize: const Size.fromHeight(48),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           ),
         ),
       ],
@@ -473,13 +487,16 @@ class _SettingsFormState extends State<SettingsForm> {
   Widget _buildUpdateStatusCard(BuildContext context) {
     final isAndroid = !kIsWeb && Platform.isAndroid;
 
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     if (_checkingUpdate) {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: const Color(0xFF18181B),
-          border: Border.all(color: kLine),
-          borderRadius: BorderRadius.circular(8),
+          color: colorScheme.surfaceContainerHigh,
+          border: Border.all(color: colorScheme.outlineVariant),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: const Row(
           mainAxisSize: MainAxisSize.min,
@@ -506,9 +523,9 @@ class _SettingsFormState extends State<SettingsForm> {
         return Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFF18181B),
+            color: colorScheme.surfaceContainerHigh,
             border: Border.all(color: kOk.withValues(alpha: 0.4)),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -541,11 +558,11 @@ class _SettingsFormState extends State<SettingsForm> {
                 const SizedBox(height: 6),
                 Container(
                   constraints: const BoxConstraints(maxHeight: 80),
-                  padding: const EdgeInsets.all(6),
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF121215),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: kLine),
+                    color: colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: colorScheme.outlineVariant),
                   ),
                   child: SingleChildScrollView(
                     child: Text(
@@ -564,7 +581,7 @@ class _SettingsFormState extends State<SettingsForm> {
                 LinearProgressIndicator(
                   value: _downloadProgress > 0 ? _downloadProgress : null,
                   color: kOk,
-                  backgroundColor: kLine,
+                  backgroundColor: colorScheme.outlineVariant,
                 ),
                 const SizedBox(height: 4),
                 if (_downloadStatusText != null)
@@ -596,8 +613,9 @@ class _SettingsFormState extends State<SettingsForm> {
                         style: FilledButton.styleFrom(
                           backgroundColor: kOk,
                           foregroundColor: kInk,
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          minimumSize: const Size(36, 32),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          minimumSize: const Size(36, 34),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                         ),
                       ),
                     OutlinedButton.icon(
@@ -605,8 +623,9 @@ class _SettingsFormState extends State<SettingsForm> {
                       icon: const Icon(Icons.open_in_new, size: 14),
                       label: const Text('GitHub'),
                       style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        minimumSize: const Size(36, 32),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        minimumSize: const Size(36, 34),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                       ),
                     ),
                   ],
@@ -617,11 +636,11 @@ class _SettingsFormState extends State<SettingsForm> {
         );
       } else if (res.errorMessage != null) {
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: const Color(0xFF18181B),
+            color: colorScheme.surfaceContainerHigh,
             border: Border.all(color: kFail.withValues(alpha: 0.3)),
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -644,22 +663,22 @@ class _SettingsFormState extends State<SettingsForm> {
         );
       } else {
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
-            color: const Color(0xFF18181B),
-            border: Border.all(color: kLine),
-            borderRadius: BorderRadius.circular(6),
+            color: colorScheme.surfaceContainerHigh,
+            border: Border.all(color: colorScheme.outlineVariant),
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.check_circle_outline, size: 13, color: kOk),
-              const SizedBox(width: 4),
+              const Icon(Icons.check_circle_outline, size: 14, color: kOk),
+              const SizedBox(width: 6),
               const Text(
                 'Up to date',
                 style: TextStyle(fontSize: 11, color: kPaper),
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: 6),
               InkWell(
                 onTap: _checkUpdate,
                 child: const Text(
@@ -675,11 +694,12 @@ class _SettingsFormState extends State<SettingsForm> {
 
     return OutlinedButton.icon(
       onPressed: _checkUpdate,
-      icon: const Icon(Icons.sync, size: 13),
+      icon: const Icon(Icons.sync, size: 14),
       label: const Text('Check for Updates'),
       style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        minimumSize: const Size(36, 32),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        minimumSize: const Size(40, 36),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
     );
   }
@@ -700,11 +720,14 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
       decoration: BoxDecoration(
-        color: kCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: kLine, width: 1),
+        color: colorScheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant, width: 1),
       ),
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -712,15 +735,23 @@ class _SectionCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, size: 16, color: kPaper),
-              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: colorScheme.outlineVariant),
+                ),
+                child: Icon(icon, size: 16, color: kPaper),
+              ),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   title,
                   style: const TextStyle(
                     fontFamily: 'Poppins',
                     fontWeight: FontWeight.w600,
-                    fontSize: 13.5,
+                    fontSize: 14,
                     letterSpacing: -0.2,
                     color: kPaper,
                   ),
@@ -728,11 +759,11 @@ class _SectionCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 4),
           Text(
             description,
             style: const TextStyle(
-              fontSize: 11,
+              fontSize: 11.5,
               color: kMute,
             ),
           ),
@@ -759,12 +790,15 @@ class _SwitchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFF18181B),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: kLine),
+        color: colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
@@ -776,26 +810,24 @@ class _SwitchCard extends StatelessWidget {
                   title,
                   style: const TextStyle(
                     fontWeight: FontWeight.w500,
-                    fontSize: 12.5,
+                    fontSize: 13,
                     color: kPaper,
                   ),
                 ),
+                const SizedBox(height: 1),
                 Text(
                   subtitle,
                   style: const TextStyle(
-                    fontSize: 10.5,
+                    fontSize: 11,
                     color: kMute,
                   ),
                 ),
               ],
             ),
           ),
-          Transform.scale(
-            scale: 0.8,
-            child: Switch(
-              value: value,
-              onChanged: onChanged,
-            ),
+          Switch(
+            value: value,
+            onChanged: onChanged,
           ),
         ],
       ),
@@ -820,6 +852,9 @@ class _MsSlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -829,23 +864,23 @@ class _MsSlider extends StatelessWidget {
             Expanded(
               child: Text(
                 label,
-                style: const TextStyle(fontSize: 11.5, color: kPaper),
+                style: const TextStyle(fontSize: 12, color: kPaper),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
             const SizedBox(width: 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: const Color(0xFF18181B),
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: kLine),
+                color: colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: colorScheme.outlineVariant),
               ),
               child: Text(
                 '${value}ms',
                 style: const TextStyle(
                   fontFamily: 'Space Mono',
-                  fontSize: 10,
+                  fontSize: 10.5,
                   fontWeight: FontWeight.w600,
                   color: kPaper,
                 ),

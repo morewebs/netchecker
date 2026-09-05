@@ -33,34 +33,44 @@ class DesktopToolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final compact = alwaysOnTop;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
-      height: compact ? 36 : 44,
-      decoration: const BoxDecoration(
-        color: kInk,
-        border: Border(bottom: BorderSide(color: kLine, width: 1)),
+      height: compact ? 42 : 50,
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        border: Border(
+          bottom: BorderSide(
+            color: colorScheme.outlineVariant,
+            width: 1,
+          ),
+        ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 14),
       child: Row(
         children: [
-          // Live Status Dot & Title
+          // Live Status Beacon
           Container(
-            width: 6,
-            height: 6,
+            width: 8,
+            height: 8,
+            margin: const EdgeInsets.only(right: 10),
             decoration: BoxDecoration(
               color: running ? kOk : kTo,
               shape: BoxShape.circle,
               boxShadow: running
                   ? [
                       BoxShadow(
-                        color: kOk.withValues(alpha: 0.6),
-                        blurRadius: 4,
-                        spreadRadius: 1,
+                        color: kOk.withValues(alpha: 0.5),
+                        blurRadius: 6,
+                        spreadRadius: 1.5,
                       ),
                     ]
                   : null,
             ),
           ),
-          const SizedBox(width: 8),
+
+          // Title & Live Metrics
           Expanded(
             child: Text(
               title,
@@ -69,7 +79,7 @@ class DesktopToolbar extends StatelessWidget {
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontWeight: FontWeight.w600,
-                fontSize: compact ? 11 : 12.5,
+                fontSize: compact ? 11.5 : 13,
                 letterSpacing: -0.2,
                 color: kPaper,
               ),
@@ -77,69 +87,119 @@ class DesktopToolbar extends StatelessWidget {
           ),
           const SizedBox(width: 8),
 
-          // NIC Dropdown (if multiple)
+          // Material 3 NIC Dropdown Menu (if multiple NICs)
           if (nics.length > 1)
             Container(
-              height: 28,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              height: compact ? 28 : 32,
               margin: const EdgeInsets.only(right: 6),
               decoration: BoxDecoration(
-                color: const Color(0xFF18181B),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: kLine),
+                color: colorScheme.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: colorScheme.outlineVariant),
               ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: nics.any((n) => n.$1 == nicId) ? nicId : 'any',
-                  isDense: true,
-                  icon: const Icon(Icons.arrow_drop_down_rounded, size: 16, color: kMute),
-                  dropdownColor: const Color(0xFF18181B),
-                  style: const TextStyle(
-                    fontFamily: 'Space Mono',
-                    fontSize: 10,
-                    color: kPaper,
+              child: PopupMenuButton<String>(
+                tooltip: 'Select Network Interface',
+                color: const Color(0xFF1A1A20),
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(color: colorScheme.outlineVariant),
+                ),
+                initialValue: nics.any((n) => n.$1 == nicId) ? nicId : 'any',
+                onSelected: onNic,
+                itemBuilder: (ctx) => [
+                  for (final n in nics)
+                    PopupMenuItem<String>(
+                      value: n.$1,
+                      height: 38,
+                      child: Row(
+                        children: [
+                          Icon(
+                            n.$1 == nicId ? Icons.check_rounded : Icons.lan_outlined,
+                            size: 14,
+                            color: n.$1 == nicId ? kOk : kMute,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              n.$2,
+                              style: TextStyle(
+                                fontFamily: 'Space Mono',
+                                fontSize: 11,
+                                fontWeight: n.$1 == nicId ? FontWeight.w600 : FontWeight.w400,
+                                color: n.$1 == nicId ? kPaper : kMute,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.lan_outlined, size: 13, color: kMute),
+                      const SizedBox(width: 6),
+                      Text(
+                        nics.firstWhere((n) => n.$1 == nicId, orElse: () => nics.first).$2,
+                        style: const TextStyle(
+                          fontFamily: 'Space Mono',
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w500,
+                          color: kPaper,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.arrow_drop_down_rounded, size: 16, color: kMute),
+                    ],
                   ),
-                  items: [
-                    for (final n in nics)
-                      DropdownMenuItem(value: n.$1, child: Text(n.$2)),
-                  ],
-                  onChanged: (v) {
-                    if (v != null) onNic(v);
-                  },
                 ),
               ),
             ),
 
-          // Action Button Group
-          _ActionButton(
+          // Material 3 Action Buttons
+          _M3ToolbarButton(
             label: running ? 'pause' : 'run',
             icon: running ? Icons.pause_rounded : Icons.play_arrow_rounded,
-            highlightColor: running ? kOk : kTo,
+            tooltip: running ? 'Pause Probing (Space, R)' : 'Start Probing (Space, R)',
+            activeColor: running ? kOk : kTo,
+            isTonalActive: running,
+            compact: compact,
             onTap: onToggleRun,
           ),
-          const SizedBox(width: 4),
-          _ActionButton(
+          const SizedBox(width: 5),
+          _M3ToolbarButton(
             label: alwaysOnTop ? 'unpin' : 'pin',
             icon: alwaysOnTop ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+            tooltip: alwaysOnTop ? 'Unpin Window (P)' : 'Pin Always on Top (P)',
+            compact: compact,
             onTap: onTogglePin,
           ),
-          const SizedBox(width: 4),
-          _ActionButton(
+          const SizedBox(width: 5),
+          _M3ToolbarButton(
             label: 'copy',
             icon: Icons.copy_rounded,
+            tooltip: 'Copy Diagnostic Report (C)',
+            compact: compact,
             onTap: onCopy,
           ),
-          const SizedBox(width: 4),
-          _ActionButton(
+          const SizedBox(width: 5),
+          _M3ToolbarButton(
             label: 'set',
             icon: Icons.tune_rounded,
+            tooltip: 'Settings (S)',
+            compact: compact,
             onTap: onSettings,
           ),
           if (onHelp != null) ...[
-            const SizedBox(width: 4),
-            _ActionButton(
+            const SizedBox(width: 5),
+            _M3ToolbarButton(
               label: '?',
               icon: Icons.keyboard_outlined,
+              tooltip: 'Keyboard & Controller Shortcuts (?)',
+              compact: compact,
               onTap: onHelp!,
             ),
           ],
@@ -149,62 +209,73 @@ class DesktopToolbar extends StatelessWidget {
   }
 }
 
-class _ActionButton extends StatefulWidget {
-  const _ActionButton({
+class _M3ToolbarButton extends StatelessWidget {
+  const _M3ToolbarButton({
     required this.label,
     required this.icon,
+    required this.tooltip,
     required this.onTap,
-    this.highlightColor,
+    this.activeColor,
+    this.isTonalActive = false,
+    this.compact = false,
   });
 
   final String label;
   final IconData icon;
+  final String tooltip;
   final VoidCallback onTap;
-  final Color? highlightColor;
-
-  @override
-  State<_ActionButton> createState() => _ActionButtonState();
-}
-
-class _ActionButtonState extends State<_ActionButton> {
-  bool _hover = false;
+  final Color? activeColor;
+  final bool isTonalActive;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final activeColor = widget.highlightColor ?? kPaper;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final fg = activeColor ?? kPaper;
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-          decoration: BoxDecoration(
-            color: _hover
-                ? const Color(0xFF27272A)
-                : const Color(0xFF18181B),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(
-              color: _hover ? kPaper.withValues(alpha: 0.3) : kLine,
+    final bgColor = isTonalActive
+        ? (activeColor?.withValues(alpha: 0.14) ?? colorScheme.surfaceContainerHighest)
+        : colorScheme.surfaceContainerHigh;
+
+    final borderColor = isTonalActive
+        ? (activeColor?.withValues(alpha: 0.35) ?? colorScheme.outlineVariant)
+        : colorScheme.outlineVariant;
+
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: bgColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: borderColor, width: 1),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          hoverColor: kPaper.withValues(alpha: 0.08),
+          splashColor: fg.withValues(alpha: 0.15),
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 9 : 11,
+              vertical: compact ? 5 : 7,
             ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(widget.icon, size: 13, color: activeColor),
-              const SizedBox(width: 4),
-              Text(
-                widget.label,
-                style: TextStyle(
-                  fontFamily: 'Space Mono',
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w600,
-                  color: activeColor,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: compact ? 13 : 15, color: fg),
+                const SizedBox(width: 5),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontFamily: 'Space Mono',
+                    fontSize: compact ? 10 : 11,
+                    fontWeight: FontWeight.w600,
+                    color: fg,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

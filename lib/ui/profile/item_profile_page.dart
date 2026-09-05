@@ -269,7 +269,7 @@ class _ItemProfilePageState extends State<ItemProfilePage> {
               child: Scaffold(
                 backgroundColor: kInk,
                 appBar: AppBar(
-                  backgroundColor: kInk,
+                  backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
                   surfaceTintColor: Colors.transparent,
                   elevation: 0,
                   leading: IconButton(
@@ -277,11 +277,11 @@ class _ItemProfilePageState extends State<ItemProfilePage> {
                     onPressed: () => Navigator.pop(context),
                   ),
                   title: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF18181B),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: kLine),
+                      color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                     ),
                     child: Text(
                       widget.targetInfo.categoryLabel,
@@ -289,20 +289,20 @@ class _ItemProfilePageState extends State<ItemProfilePage> {
                         fontFamily: 'Space Mono',
                         color: kPaper,
                         fontWeight: FontWeight.w600,
-                        fontSize: 10,
+                        fontSize: 10.5,
                         letterSpacing: 0.5,
                       ),
                     ),
                   ),
                   actions: [
                     IconButton(
-                      tooltip: 'Trace Route',
+                      tooltip: 'Trace Route (T)',
                       icon: const Icon(Icons.alt_route_rounded, size: 18),
                       style: IconButton.styleFrom(
-                        backgroundColor: const Color(0xFF18181B),
+                        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(6),
-                          side: const BorderSide(color: kLine),
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
                         ),
                         padding: const EdgeInsets.all(8),
                       ),
@@ -312,15 +312,15 @@ class _ItemProfilePageState extends State<ItemProfilePage> {
                         title: widget.targetInfo.title,
                       ),
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 6),
                     IconButton(
                       tooltip: 'Reset Stats',
                       icon: const Icon(Icons.refresh_rounded, size: 18),
                       style: IconButton.styleFrom(
-                        backgroundColor: const Color(0xFF18181B),
+                        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(6),
-                          side: const BorderSide(color: kLine),
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
                         ),
                         padding: const EdgeInsets.all(8),
                       ),
@@ -331,15 +331,15 @@ class _ItemProfilePageState extends State<ItemProfilePage> {
                         );
                       },
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 6),
                     IconButton(
-                      tooltip: 'Copy Report',
+                      tooltip: 'Copy Report (C)',
                       icon: const Icon(Icons.copy_rounded, size: 18),
                       style: IconButton.styleFrom(
-                        backgroundColor: const Color(0xFF18181B),
+                        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(6),
-                          side: const BorderSide(color: kLine),
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
                         ),
                         padding: const EdgeInsets.all(8),
                       ),
@@ -347,9 +347,9 @@ class _ItemProfilePageState extends State<ItemProfilePage> {
                     ),
                     const SizedBox(width: 12),
                   ],
-                  bottom: const PreferredSize(
-                    preferredSize: Size.fromHeight(1),
-                    child: Divider(height: 1, color: kLine),
+                  bottom: PreferredSize(
+                    preferredSize: const Size.fromHeight(1),
+                    child: Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
                   ),
                 ),
           body: SafeArea(
