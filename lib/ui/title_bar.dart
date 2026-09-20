@@ -33,77 +33,55 @@ class DesktopToolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final compact = alwaysOnTop;
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
 
     return Container(
-      height: compact ? 42 : 50,
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
+      height: compact ? 28 : 32,
+      decoration: const BoxDecoration(
+        color: kInk,
         border: Border(
           bottom: BorderSide(
-            color: colorScheme.outlineVariant,
+            color: kLine,
             width: 1,
           ),
         ),
       ),
-      padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 14),
+      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
       child: Row(
         children: [
-          // Live Status Beacon
+          // Flat Precision Status Indicator (No Neon Glow)
           Container(
-            width: 8,
-            height: 8,
-            margin: const EdgeInsets.only(right: 10),
+            width: 6,
+            height: 6,
+            margin: const EdgeInsets.only(right: 8),
             decoration: BoxDecoration(
               color: running ? kOk : kTo,
-              shape: BoxShape.circle,
-              boxShadow: running
-                  ? [
-                      BoxShadow(
-                        color: kOk.withValues(alpha: 0.5),
-                        blurRadius: 6,
-                        spreadRadius: 1.5,
-                      ),
-                    ]
-                  : null,
+              borderRadius: BorderRadius.circular(1),
             ),
           ),
 
-          // Title & Live Metrics
+          // Title & Live Metrics (Poppins + Space Mono Tabular Figures)
           Expanded(
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontFamily: 'Poppins',
-                fontWeight: FontWeight.w600,
-                fontSize: compact ? 11.5 : 13,
-                letterSpacing: -0.2,
-                color: kPaper,
-              ),
-            ),
+            child: _buildTitle(compact),
           ),
           const SizedBox(width: 8),
 
-          // Material 3 NIC Dropdown Menu (if multiple NICs)
+          // Instrument NIC Dropdown (if multiple NICs)
           if (nics.length > 1)
             Container(
-              height: compact ? 28 : 32,
+              height: compact ? 20 : 22,
               margin: const EdgeInsets.only(right: 6),
               decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: colorScheme.outlineVariant),
+                color: kInk,
+                borderRadius: BorderRadius.circular(2),
+                border: Border.all(color: kLine),
               ),
               child: PopupMenuButton<String>(
                 tooltip: 'Select Network Interface',
-                color: const Color(0xFF1A1A20),
-                elevation: 4,
+                color: const Color(0xFF141418),
+                elevation: 2,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(color: colorScheme.outlineVariant),
+                  borderRadius: BorderRadius.circular(3),
+                  side: const BorderSide(color: kLine),
                 ),
                 initialValue: nics.any((n) => n.$1 == nicId) ? nicId : 'any',
                 onSelected: onNic,
@@ -111,12 +89,12 @@ class DesktopToolbar extends StatelessWidget {
                   for (final n in nics)
                     PopupMenuItem<String>(
                       value: n.$1,
-                      height: 38,
+                      height: 30,
                       child: Row(
                         children: [
                           Icon(
                             n.$1 == nicId ? Icons.check_rounded : Icons.lan_outlined,
-                            size: 14,
+                            size: 13,
                             color: n.$1 == nicId ? kOk : kMute,
                           ),
                           const SizedBox(width: 8),
@@ -125,7 +103,7 @@ class DesktopToolbar extends StatelessWidget {
                               n.$2,
                               style: TextStyle(
                                 fontFamily: 'Space Mono',
-                                fontSize: 11,
+                                fontSize: 10.5,
                                 fontWeight: n.$1 == nicId ? FontWeight.w600 : FontWeight.w400,
                                 color: n.$1 == nicId ? kPaper : kMute,
                               ),
@@ -136,31 +114,31 @@ class DesktopToolbar extends StatelessWidget {
                     ),
                 ],
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.lan_outlined, size: 13, color: kMute),
-                      const SizedBox(width: 6),
+                      const Icon(Icons.lan_outlined, size: 11, color: kMute),
+                      const SizedBox(width: 5),
                       Text(
                         nics.firstWhere((n) => n.$1 == nicId, orElse: () => nics.first).$2,
                         style: const TextStyle(
                           fontFamily: 'Space Mono',
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w500,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w400,
                           color: kPaper,
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      const Icon(Icons.arrow_drop_down_rounded, size: 16, color: kMute),
+                      const SizedBox(width: 3),
+                      const Icon(Icons.arrow_drop_down_rounded, size: 14, color: kMute),
                     ],
                   ),
                 ),
               ),
             ),
 
-          // Material 3 Action Buttons
-          _M3ToolbarButton(
+          // Instrument Action Buttons
+          _InstrumentToolbarButton(
             label: running ? 'pause' : 'run',
             icon: running ? Icons.pause_rounded : Icons.play_arrow_rounded,
             tooltip: running ? 'Pause Probing (Space, R)' : 'Start Probing (Space, R)',
@@ -169,24 +147,25 @@ class DesktopToolbar extends StatelessWidget {
             compact: compact,
             onTap: onToggleRun,
           ),
-          const SizedBox(width: 5),
-          _M3ToolbarButton(
+          const SizedBox(width: 4),
+          _InstrumentToolbarButton(
             label: alwaysOnTop ? 'unpin' : 'pin',
             icon: alwaysOnTop ? Icons.push_pin_rounded : Icons.push_pin_outlined,
             tooltip: alwaysOnTop ? 'Unpin Window (P)' : 'Pin Always on Top (P)',
+            isTonalActive: alwaysOnTop,
             compact: compact,
             onTap: onTogglePin,
           ),
-          const SizedBox(width: 5),
-          _M3ToolbarButton(
+          const SizedBox(width: 4),
+          _InstrumentToolbarButton(
             label: 'copy',
             icon: Icons.copy_rounded,
             tooltip: 'Copy Diagnostic Report (C)',
             compact: compact,
             onTap: onCopy,
           ),
-          const SizedBox(width: 5),
-          _M3ToolbarButton(
+          const SizedBox(width: 4),
+          _InstrumentToolbarButton(
             label: 'set',
             icon: Icons.tune_rounded,
             tooltip: 'Settings (S)',
@@ -194,8 +173,8 @@ class DesktopToolbar extends StatelessWidget {
             onTap: onSettings,
           ),
           if (onHelp != null) ...[
-            const SizedBox(width: 5),
-            _M3ToolbarButton(
+            const SizedBox(width: 4),
+            _InstrumentToolbarButton(
               label: '?',
               icon: Icons.keyboard_outlined,
               tooltip: 'Keyboard & Controller Shortcuts (?)',
@@ -207,10 +186,82 @@ class DesktopToolbar extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildTitle(bool compact) {
+    final parts = title.split('  ');
+    if (parts.length >= 4 && parts[0] == 'NetChecker') {
+      final okPart = parts[1];
+      final downPart = parts[2];
+      final countPart = parts[3];
+      final isDown = !downPart.startsWith('0 ');
+
+      return Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: 'NetChecker',
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontWeight: FontWeight.w600,
+                fontSize: compact ? 11 : 12,
+                letterSpacing: -0.2,
+                color: kPaper,
+              ),
+            ),
+            const TextSpan(text: '   '),
+            TextSpan(
+              text: okPart,
+              style: TextStyle(
+                fontFamily: 'Space Mono',
+                fontSize: compact ? 10 : 11,
+                fontWeight: FontWeight.w500,
+                color: kOk,
+              ),
+            ),
+            const TextSpan(text: '  '),
+            TextSpan(
+              text: downPart,
+              style: TextStyle(
+                fontFamily: 'Space Mono',
+                fontSize: compact ? 10 : 11,
+                fontWeight: FontWeight.w500,
+                color: isDown ? kFail : kSubtle,
+              ),
+            ),
+            const TextSpan(text: '  '),
+            TextSpan(
+              text: countPart,
+              style: TextStyle(
+                fontFamily: 'Space Mono',
+                fontSize: compact ? 10 : 11,
+                fontWeight: FontWeight.w400,
+                color: kMute,
+              ),
+            ),
+          ],
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+
+    return Text(
+      title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontFamily: 'Poppins',
+        fontWeight: FontWeight.w600,
+        fontSize: compact ? 11 : 12,
+        letterSpacing: -0.2,
+        color: kPaper,
+      ),
+    );
+  }
 }
 
-class _M3ToolbarButton extends StatelessWidget {
-  const _M3ToolbarButton({
+class _InstrumentToolbarButton extends StatelessWidget {
+  const _InstrumentToolbarButton({
     required this.label,
     required this.icon,
     required this.tooltip,
@@ -230,47 +281,45 @@ class _M3ToolbarButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final fg = activeColor ?? kPaper;
 
     final bgColor = isTonalActive
-        ? (activeColor?.withValues(alpha: 0.14) ?? colorScheme.surfaceContainerHighest)
-        : colorScheme.surfaceContainerHigh;
+        ? (activeColor?.withValues(alpha: 0.12) ?? Colors.white.withValues(alpha: 0.05))
+        : Colors.transparent;
 
     final borderColor = isTonalActive
-        ? (activeColor?.withValues(alpha: 0.35) ?? colorScheme.outlineVariant)
-        : colorScheme.outlineVariant;
+        ? (activeColor?.withValues(alpha: 0.45) ?? kLine)
+        : kLine;
 
     return Tooltip(
       message: tooltip,
       child: Material(
         color: bgColor,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(2),
           side: BorderSide(color: borderColor, width: 1),
         ),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(2),
           hoverColor: kPaper.withValues(alpha: 0.08),
           splashColor: fg.withValues(alpha: 0.15),
           child: Padding(
             padding: EdgeInsets.symmetric(
-              horizontal: compact ? 9 : 11,
-              vertical: compact ? 5 : 7,
+              horizontal: compact ? 6 : 8,
+              vertical: compact ? 2 : 3,
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, size: compact ? 13 : 15, color: fg),
-                const SizedBox(width: 5),
+                Icon(icon, size: compact ? 11.5 : 12.5, color: fg),
+                const SizedBox(width: 4),
                 Text(
                   label,
                   style: TextStyle(
                     fontFamily: 'Space Mono',
-                    fontSize: compact ? 10 : 11,
-                    fontWeight: FontWeight.w600,
+                    fontSize: compact ? 9.5 : 10.5,
+                    fontWeight: FontWeight.w500,
                     color: fg,
                   ),
                 ),

@@ -163,7 +163,6 @@ class DesktopHome extends StatelessWidget {
                       onHelp: () => _showHelp(bCtx),
                       onNic: engine.setNic,
                     ),
-                    const Divider(height: 1),
                     Expanded(
                       child: ProbeBoard(engine: engine, compact: compact),
                     ),
