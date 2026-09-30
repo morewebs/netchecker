@@ -12,6 +12,8 @@ struct _MyApplication {
   char** dart_entrypoint_arguments;
   GtkWindow* window;
   FlMethodChannel* window_channel;
+  gboolean compact;
+  gint restore_width, restore_height, restore_x, restore_y;
 };
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
@@ -34,7 +36,17 @@ static void window_method_call(FlMethodChannel* channel,
   if (g_strcmp0(method, "setCompact") == 0 &&
       fl_value_get_type(args) == FL_VALUE_TYPE_BOOL) {
     const gboolean on = fl_value_get_bool(args);
-    gtk_window_resize(app->window, on ? 420 : 720, on ? 640 : 800);
+    if (on != app->compact) {
+      if (on) {
+        gtk_window_get_size(app->window, &app->restore_width, &app->restore_height);
+        gtk_window_get_position(app->window, &app->restore_x, &app->restore_y);
+        gtk_window_resize(app->window, 420, 640);
+      } else {
+        gtk_window_resize(app->window, app->restore_width, app->restore_height);
+        gtk_window_move(app->window, app->restore_x, app->restore_y);
+      }
+      app->compact = on;
+    }
     fl_method_call_respond(
         method_call,
         FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr)), nullptr);
@@ -83,7 +95,7 @@ static void my_application_activate(GApplication* application) {
     gtk_window_set_title(window, "NetChecker");
   }
 
-  gtk_window_set_default_size(window, 720, 800);
+  gtk_window_set_default_size(window, 1180, 800);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(

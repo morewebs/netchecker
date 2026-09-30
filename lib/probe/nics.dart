@@ -7,7 +7,7 @@ Future<List<NicChoice>> listNics() async {
   try {
     final nics = await NetworkInterface.list(
       includeLinkLocal: false,
-      type: InternetAddressType.IPv4,
+      type: InternetAddressType.any,
     );
     for (final nic in nics) {
       for (final addr in nic.addresses) {

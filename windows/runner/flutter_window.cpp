@@ -1,4 +1,5 @@
 #include "flutter_window.h"
+#include <algorithm>
 
 #include <optional>
 
@@ -49,7 +50,7 @@ void FlutterWindow::RegisterWindowChannel() {
           flutter_controller_->engine()->messenger(), "netchecker/window",
           &flutter::StandardMethodCodec::GetInstance());
   window_channel_->SetMethodCallHandler(
-      [hwnd](const flutter::MethodCall<flutter::EncodableValue>& call,
+      [this, hwnd](const flutter::MethodCall<flutter::EncodableValue>& call,
              std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
                  result) {
         const auto& method = call.method_name();
@@ -68,12 +69,25 @@ void FlutterWindow::RegisterWindowChannel() {
           if (const auto* value = std::get_if<bool>(call.arguments())) {
             on = *value;
           }
-          RECT rect;
-          GetWindowRect(hwnd, &rect);
-          const int w = on ? 420 : 720;
-          const int h = on ? 640 : 800;
-          SetWindowPos(hwnd, nullptr, rect.right - w, rect.top, w, h,
-                       SWP_NOZORDER);
+          if (on != compact_) {
+            RECT rect;
+            GetWindowRect(hwnd, &rect);
+            if (on) restore_bounds_ = rect;
+            const UINT dpi = GetDpiForWindow(hwnd);
+            int w = on ? MulDiv(420, dpi, 96) : restore_bounds_.right - restore_bounds_.left;
+            int h = on ? MulDiv(640, dpi, 96) : restore_bounds_.bottom - restore_bounds_.top;
+            int x = on ? rect.right - w : restore_bounds_.left;
+            int y = on ? rect.top : restore_bounds_.top;
+            MONITORINFO info{sizeof(MONITORINFO)};
+            if (GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &info)) {
+              w = std::min<int>(w, info.rcWork.right - info.rcWork.left);
+              h = std::min<int>(h, info.rcWork.bottom - info.rcWork.top);
+              x = std::max<int>(info.rcWork.left, std::min<int>(x, info.rcWork.right - w));
+              y = std::max<int>(info.rcWork.top, std::min<int>(y, info.rcWork.bottom - h));
+            }
+            SetWindowPos(hwnd, nullptr, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+            compact_ = on;
+          }
           result->Success();
           return;
         }

@@ -1,8 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ReleaseAsset {
@@ -46,7 +44,8 @@ class ReleaseInfo {
   final DateTime? publishedAt;
 
   factory ReleaseInfo.fromJson(Map<String, dynamic> json) {
-    final assetList = (json['assets'] as List<dynamic>?)
+    final assetList =
+        (json['assets'] as List<dynamic>?)
             ?.map((e) => ReleaseAsset.fromJson(e as Map<String, dynamic>))
             .toList() ??
         const [];
@@ -68,31 +67,35 @@ class ReleaseInfo {
 
   ReleaseAsset? get apkAsset {
     return assets.cast<ReleaseAsset?>().firstWhere(
-          (a) => a != null && a.name.toLowerCase().endsWith('.apk'),
-          orElse: () => null,
-        );
+      (a) =>
+          a != null &&
+          (a.name.toLowerCase() == 'app-release.apk' ||
+              a.name.toLowerCase().contains('universal')) &&
+          a.name.toLowerCase().endsWith('.apk'),
+      orElse: () => null,
+    );
   }
 
   ReleaseAsset? get windowsAsset {
     return assets.cast<ReleaseAsset?>().firstWhere(
-          (a) =>
-              a != null &&
-              (a.name.toLowerCase().contains('windows') ||
-                  a.name.toLowerCase().endsWith('.zip') ||
-                  a.name.toLowerCase().endsWith('.exe')),
-          orElse: () => null,
-        );
+      (a) =>
+          a != null &&
+          a.name.toLowerCase().contains('windows') &&
+          (a.name.toLowerCase().endsWith('.zip') ||
+              a.name.toLowerCase().endsWith('.exe')),
+      orElse: () => null,
+    );
   }
 
   ReleaseAsset? get linuxAsset {
     return assets.cast<ReleaseAsset?>().firstWhere(
-          (a) =>
-              a != null &&
-              (a.name.toLowerCase().endsWith('.deb') ||
-                  a.name.toLowerCase().endsWith('.rpm') ||
-                  a.name.toLowerCase().contains('linux')),
-          orElse: () => null,
-        );
+      (a) =>
+          a != null &&
+          (a.name.toLowerCase().endsWith('.deb') ||
+              a.name.toLowerCase().endsWith('.rpm') ||
+              a.name.toLowerCase().contains('linux')),
+      orElse: () => null,
+    );
   }
 }
 
@@ -117,6 +120,14 @@ class UpdateService {
   /// Compares two semver strings (e.g. `v1.0.0+1` or `1.2.0`).
   /// Returns `true` if [latest] is strictly newer than [current].
   static bool isNewerVersion(String current, String latest) {
+    current = current.trim();
+    latest = latest.trim();
+    final valid = RegExp(
+      r'^[vV]?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$',
+    );
+    if (!valid.hasMatch(current.trim()) || !valid.hasMatch(latest.trim())) {
+      return false;
+    }
     final curParsed = _parseVersion(current);
     final latParsed = _parseVersion(latest);
 
@@ -132,7 +143,23 @@ class UpdateService {
       if (l < c) return false;
     }
 
-    // If core versions match, compare build numbers if present (e.g. +1 vs +2)
+    final curPre = current.split('+').first.split('-').skip(1).join('-');
+    final latPre = latest.split('+').first.split('-').skip(1).join('-');
+    if (curPre != latPre) {
+      if (curPre.isEmpty) return false;
+      if (latPre.isEmpty) return true;
+      final a = curPre.split('.'), b = latPre.split('.');
+      for (var i = 0; i < a.length && i < b.length; i++) {
+        if (a[i] == b[i]) continue;
+        final an = int.tryParse(a[i]), bn = int.tryParse(b[i]);
+        if (an != null && bn != null) return bn > an;
+        if (an != null) return true;
+        if (bn != null) return false;
+        return b[i].compareTo(a[i]) > 0;
+      }
+      return b.length > a.length;
+    }
+    // Flutter release build numbers remain a useful tie-breaker.
     if (latParsed.buildNumber != null && curParsed.buildNumber != null) {
       return latParsed.buildNumber! > curParsed.buildNumber!;
     }
@@ -196,14 +223,34 @@ class UpdateService {
     client.connectionTimeout = const Duration(seconds: 8);
 
     try {
-      final uri = Uri.parse('https://api.github.com/repos/$owner/$repo/releases/latest');
-      final request = await client.getUrl(uri);
+      final uri = Uri.parse(
+        'https://api.github.com/repos/$owner/$repo/releases/latest',
+      );
+      final deadline = Stopwatch()..start();
+      Future<T> bounded<T>(Future<T> work) =>
+          work.timeout(const Duration(seconds: 8) - deadline.elapsed);
+      final request = await bounded(client.getUrl(uri));
       request.headers.set(HttpHeaders.userAgentHeader, 'NetChecker-App');
-      request.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github.v3+json');
+      request.headers.set(
+        HttpHeaders.acceptHeader,
+        'application/vnd.github.v3+json',
+      );
 
-      final response = await request.close();
+      final response = await bounded(request.close());
       if (response.statusCode == 200) {
-        final bodyStr = await response.transform(utf8.decoder).join();
+        var bytes = 0;
+        final bodyStr = await bounded(
+          response
+              .map((chunk) {
+                bytes += chunk.length;
+                if (bytes > 2 * 1024 * 1024) {
+                  throw const FormatException('Release metadata too large');
+                }
+                return chunk;
+              })
+              .transform(utf8.decoder)
+              .join(),
+        );
         final json = jsonDecode(bodyStr) as Map<String, dynamic>;
         final release = ReleaseInfo.fromJson(json);
 
@@ -239,72 +286,19 @@ class UpdateService {
     }
   }
 
-  /// Downloads an APK to the temporary directory with progress tracking.
-  static Future<File> downloadApk({
-    required String downloadUrl,
-    required void Function(int received, int total) onProgress,
-    HttpClient? httpClient,
-  }) async {
-    final client = httpClient ?? HttpClient();
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final filePath = '${tempDir.path}/netchecker-update.apk';
-      final file = File(filePath);
-      if (await file.exists()) {
-        await file.delete();
-      }
-
-      final uri = Uri.parse(downloadUrl);
-      final request = await client.getUrl(uri);
-      request.headers.set(HttpHeaders.userAgentHeader, 'NetChecker-App');
-      final response = await request.close();
-
-      if (response.statusCode != 200 && response.statusCode != 302 && response.statusCode != 301) {
-        throw Exception('Download failed with status: ${response.statusCode}');
-      }
-
-      // Follow redirect if GitHub returned 302/301 for asset download
-      HttpClientResponse actualResponse = response;
-      if (response.statusCode == 301 || response.statusCode == 302) {
-        final location = response.headers.value(HttpHeaders.locationHeader);
-        if (location != null) {
-          final redirectReq = await client.getUrl(Uri.parse(location));
-          actualResponse = await redirectReq.close();
-        }
-      }
-
-      final totalBytes = actualResponse.contentLength;
-      int receivedBytes = 0;
-
-      final sink = file.openWrite();
-      await for (final chunk in actualResponse) {
-        sink.add(chunk);
-        receivedBytes += chunk.length;
-        onProgress(receivedBytes, totalBytes);
-      }
-      await sink.flush();
-      await sink.close();
-
-      return file;
-    } finally {
-      if (httpClient == null) {
-        client.close(force: true);
-      }
-    }
-  }
-
-  /// Opens the downloaded APK file to initiate Android Package Installer.
-  static Future<OpenResult> installApk(String filePath) async {
-    return await OpenFilex.open(filePath);
-  }
-
   /// Opens any URL in the system's default browser.
   static Future<bool> openUrl(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
+    try {
+      final uri = Uri.parse(url);
+      if (uri.scheme != 'https' ||
+          uri.host != 'github.com' ||
+          uri.userInfo.isNotEmpty) {
+        return false;
+      }
       return await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      return false;
     }
-    return false;
   }
 }
 

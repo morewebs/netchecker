@@ -1,7 +1,66 @@
+import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 
+Uri parseWebsite(String input) {
+  var raw = input.trim();
+  if (raw.isEmpty || RegExp(r'\s').hasMatch(raw)) {
+    throw const FormatException(
+      'Enter a hostname or HTTPS URL without spaces.',
+    );
+  }
+  if (!raw.contains('://')) {
+    final ip = InternetAddress.tryParse(raw);
+    raw = 'https://${ip?.type == InternetAddressType.IPv6 ? '[$raw]' : raw}';
+  }
+  final uri = Uri.tryParse(raw);
+  if (uri == null ||
+      uri.scheme != 'https' ||
+      uri.host.isEmpty ||
+      uri.userInfo.isNotEmpty) {
+    throw const FormatException(
+      'Use a hostname, IP address or HTTPS URL without credentials.',
+    );
+  }
+  final host = uri.host.toLowerCase().replaceFirst(RegExp(r'\.$'), '');
+  if (InternetAddress.tryParse(host) == null &&
+      (!RegExp(r'^[a-z0-9.-]+$').hasMatch(host) ||
+          host
+              .split('.')
+              .any(
+                (s) =>
+                    s.isEmpty ||
+                    s.length > 63 ||
+                    s.startsWith('-') ||
+                    s.endsWith('-'),
+              ))) {
+    throw const FormatException(
+      'Enter a valid hostname (use punycode for international names).',
+    );
+  }
+  if (uri.port < 1 || uri.port > 65535 || host.length > 253) {
+    throw const FormatException('Invalid host or port.');
+  }
+  return uri
+      .replace(
+        host: host,
+        path: uri.path.isEmpty ? '/' : uri.path,
+        fragment: '',
+      )
+      .removeFragment();
+}
+
+String parseDnsName(String input) {
+  final uri = parseWebsite(input);
+  if (InternetAddress.tryParse(uri.host) != null) {
+    throw const FormatException(
+      'DNS comparison needs a hostname, not an IP address.',
+    );
+  }
+  return uri.host;
+}
+
 class AppSettings {
-  AppSettings({
+  const AppSettings({
     this.httpTimeoutMs = 3000,
     this.itemDelayMs = 400,
     this.dnsTimeoutMs = 2000,
@@ -10,34 +69,28 @@ class AppSettings {
     this.extraDomains = const [],
     this.useDefaultDomains = true,
     this.alwaysOnTop = false,
+    this.compactMode = false,
     this.nicId = 'any',
     this.running = true,
     this.privacyMode = false,
-    this.maxRounds = 0,
     this.exportFormat = 'markdown',
     this.autoCheckUpdates = true,
+    this.favorites = const [],
+    this.disabledTargets = const [],
   });
-
-  final int httpTimeoutMs;
-  final int itemDelayMs;
-  final int dnsTimeoutMs;
-  final int dnsDelayMs;
-  final String huntName;
-  final List<String> extraDomains;
-  final bool useDefaultDomains;
-  final bool alwaysOnTop;
-  final String nicId;
-  final bool running;
-  final bool privacyMode;
-  final int maxRounds;
-  final String exportFormat;
-  final bool autoCheckUpdates;
-
+  final int httpTimeoutMs, itemDelayMs, dnsTimeoutMs, dnsDelayMs;
+  final String huntName, nicId, exportFormat;
+  final List<String> extraDomains, favorites, disabledTargets;
+  final bool useDefaultDomains,
+      alwaysOnTop,
+      compactMode,
+      running,
+      privacyMode,
+      autoCheckUpdates;
   Duration get httpTimeout => Duration(milliseconds: httpTimeoutMs);
   Duration get itemDelay => Duration(milliseconds: itemDelayMs);
   Duration get dnsTimeout => Duration(milliseconds: dnsTimeoutMs);
   Duration get dnsDelay => Duration(milliseconds: dnsDelayMs);
-
   AppSettings copyWith({
     int? httpTimeoutMs,
     int? itemDelayMs,
@@ -47,64 +100,100 @@ class AppSettings {
     List<String>? extraDomains,
     bool? useDefaultDomains,
     bool? alwaysOnTop,
+    bool? compactMode,
     String? nicId,
     bool? running,
     bool? privacyMode,
-    int? maxRounds,
     String? exportFormat,
     bool? autoCheckUpdates,
-  }) {
+    List<String>? favorites,
+    List<String>? disabledTargets,
+  }) => AppSettings(
+    httpTimeoutMs: httpTimeoutMs ?? this.httpTimeoutMs,
+    itemDelayMs: itemDelayMs ?? this.itemDelayMs,
+    dnsTimeoutMs: dnsTimeoutMs ?? this.dnsTimeoutMs,
+    dnsDelayMs: dnsDelayMs ?? this.dnsDelayMs,
+    huntName: huntName ?? this.huntName,
+    extraDomains: List.unmodifiable(extraDomains ?? this.extraDomains),
+    useDefaultDomains: useDefaultDomains ?? this.useDefaultDomains,
+    alwaysOnTop: alwaysOnTop ?? this.alwaysOnTop,
+    compactMode: compactMode ?? this.compactMode,
+    nicId: nicId ?? this.nicId,
+    running: running ?? this.running,
+    privacyMode: privacyMode ?? this.privacyMode,
+    exportFormat: exportFormat ?? this.exportFormat,
+    autoCheckUpdates: autoCheckUpdates ?? this.autoCheckUpdates,
+    favorites: List.unmodifiable(favorites ?? this.favorites),
+    disabledTargets: List.unmodifiable(disabledTargets ?? this.disabledTargets),
+  );
+
+  factory AppSettings.fromPrefs(SharedPreferences p) {
+    T read<T>(String key, T fallback) {
+      try {
+        final value = p.get(key);
+        return value is T ? value : fallback;
+      } catch (_) {
+        return fallback;
+      }
+    }
+
+    final rawHunt = read('huntName', 'youtube.com');
+    String hunt;
+    try {
+      hunt = parseDnsName(rawHunt);
+    } catch (_) {
+      hunt = 'youtube.com';
+    }
+    final extras = <String>{};
+    for (final entry in read<List<String>>('extraDomains', [])) {
+      try {
+        extras.add(parseWebsite(entry).toString());
+      } catch (_) {
+        /* Invalid legacy entries are excluded. */
+      }
+    }
+    final format = read('exportFormat', 'markdown');
     return AppSettings(
-      httpTimeoutMs: httpTimeoutMs ?? this.httpTimeoutMs,
-      itemDelayMs: itemDelayMs ?? this.itemDelayMs,
-      dnsTimeoutMs: dnsTimeoutMs ?? this.dnsTimeoutMs,
-      dnsDelayMs: dnsDelayMs ?? this.dnsDelayMs,
-      huntName: huntName ?? this.huntName,
-      extraDomains: extraDomains ?? this.extraDomains,
-      useDefaultDomains: useDefaultDomains ?? this.useDefaultDomains,
-      alwaysOnTop: alwaysOnTop ?? this.alwaysOnTop,
-      nicId: nicId ?? this.nicId,
-      running: running ?? this.running,
-      privacyMode: privacyMode ?? this.privacyMode,
-      maxRounds: maxRounds ?? this.maxRounds,
-      exportFormat: exportFormat ?? this.exportFormat,
-      autoCheckUpdates: autoCheckUpdates ?? this.autoCheckUpdates,
+      httpTimeoutMs: read('httpTimeoutMs', 3000).clamp(500, 15000),
+      itemDelayMs: read('itemDelayMs', 400).clamp(0, 5000),
+      dnsTimeoutMs: read('dnsTimeoutMs', 2000).clamp(300, 8000),
+      dnsDelayMs: read('dnsDelayMs', 600).clamp(0, 5000),
+      huntName: hunt,
+      extraDomains: extras.toList(),
+      useDefaultDomains: read('useDefaultDomains', true),
+      alwaysOnTop: read('alwaysOnTop', false),
+      compactMode: read('compactMode', read('alwaysOnTop', false)),
+      nicId: read('nicId', 'any'),
+      running: read('running', true),
+      privacyMode: read('privacyMode', false),
+      exportFormat: ['markdown', 'plaintext', 'json', 'csv'].contains(format)
+          ? format
+          : 'markdown',
+      autoCheckUpdates: read('autoCheckUpdates', true),
+      favorites: read<List<String>>('favorites', []),
+      disabledTargets: read<List<String>>('disabledTargets', []),
     );
   }
-
-  static AppSettings fromPrefs(SharedPreferences p) {
-    return AppSettings(
-      httpTimeoutMs: p.getInt('httpTimeoutMs') ?? 3000,
-      itemDelayMs: p.getInt('itemDelayMs') ?? 400,
-      dnsTimeoutMs: p.getInt('dnsTimeoutMs') ?? 2000,
-      dnsDelayMs: p.getInt('dnsDelayMs') ?? 600,
-      huntName: p.getString('huntName') ?? 'youtube.com',
-      extraDomains: p.getStringList('extraDomains') ?? const [],
-      useDefaultDomains: p.getBool('useDefaultDomains') ?? true,
-      alwaysOnTop: p.getBool('alwaysOnTop') ?? false,
-      nicId: p.getString('nicId') ?? 'any',
-      running: p.getBool('running') ?? true,
-      privacyMode: p.getBool('privacyMode') ?? false,
-      maxRounds: p.getInt('maxRounds') ?? 0,
-      exportFormat: p.getString('exportFormat') ?? 'markdown',
-      autoCheckUpdates: p.getBool('autoCheckUpdates') ?? true,
-    );
-  }
-
   Future<void> save(SharedPreferences p) async {
-    await p.setInt('httpTimeoutMs', httpTimeoutMs);
-    await p.setInt('itemDelayMs', itemDelayMs);
-    await p.setInt('dnsTimeoutMs', dnsTimeoutMs);
-    await p.setInt('dnsDelayMs', dnsDelayMs);
-    await p.setString('huntName', huntName);
-    await p.setStringList('extraDomains', extraDomains);
-    await p.setBool('useDefaultDomains', useDefaultDomains);
-    await p.setBool('alwaysOnTop', alwaysOnTop);
-    await p.setString('nicId', nicId);
-    await p.setBool('running', running);
-    await p.setBool('privacyMode', privacyMode);
-    await p.setInt('maxRounds', maxRounds);
-    await p.setString('exportFormat', exportFormat);
-    await p.setBool('autoCheckUpdates', autoCheckUpdates);
+    await Future.wait([
+      p.setInt('settingsVersion', 2),
+      p.remove('maxRounds'),
+      p.setInt('httpTimeoutMs', httpTimeoutMs),
+      p.setInt('itemDelayMs', itemDelayMs),
+      p.setInt('dnsTimeoutMs', dnsTimeoutMs),
+      p.setInt('dnsDelayMs', dnsDelayMs),
+      p.setString('huntName', huntName),
+      p.setStringList('extraDomains', extraDomains),
+      p.setBool('useDefaultDomains', useDefaultDomains),
+      p.setBool('alwaysOnTop', alwaysOnTop),
+      p.setBool('compactMode', compactMode),
+      p.setString('nicId', nicId),
+      p.setBool('running', running),
+      p.setBool('privacyMode', privacyMode),
+      p.setString('exportFormat', exportFormat),
+      p.setBool('autoCheckUpdates', autoCheckUpdates),
+      p.setStringList('favorites', favorites),
+      p.setStringList('disabledTargets', disabledTargets),
+    ]);
   }
 }

@@ -30,6 +30,7 @@ void main() {
       ]);
     // QDCOUNT/ANCOUNT are in the header copied from the query (ANCOUNT=0).
     final bytes = Uint8List.fromList(msg.toBytes());
+    bytes[2] = 0x81; // QR=response, RD=query recursion requested
     bytes[7] = 1; // ANCOUNT
     expect(parseDnsARecords(bytes), ['1.2.3.4']);
   });

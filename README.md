@@ -1,19 +1,40 @@
 # NetChecker
 
-Network reachability checker for VPN engineers. Android, Windows, and Linux.
+Continuous connection monitoring for Android, Windows, and Linux. Check what is
+reachable, inspect the evidence, and compare results before and after changing
+your network or VPN.
 
 ## Checks
 
-Sequential probes, one at a time:
+Three independent lanes run continuously, with sequential checks within each lane:
 
-- **DNS** — UDP latency to public and Iranian resolvers (Shecan, Electro, Radar, 403, …)
-- **NET** — IPv4, IPv6, TLS, SNI spoof (`youtube.com` on `1.1.1.1`), Cloudflare edge IPs
-- **HUNT** — A records each resolver returns for a watched name (default `youtube.com`)
-- **SITES** — HTTPS to ~30 destinations, including names commonly filtered in Iran
+- **Websites** — certificate-verified HTTPS reachability, with HTTP response codes
+  and measured connection stages. HEAD falls back to GET when unsupported.
+- **DNS** — resolver response latency and address lookups, shown separately.
+  Queries validate responses and fall back to TCP for truncated UDP answers.
+- **Advanced** — IPv4/IPv6 TCP, TLS handshakes, and edge checks. Handshake-only
+  checks explicitly state that certificate identity is not verified.
 
-Settings: HTTP timeout (default 3s), delay between sites (default 400ms), DNS timeout/delay, extra hosts, hunt name.
+Search, filter, favorite, or exclude targets without reordering live results.
+Phones open full-screen details; wide desktop windows keep a detail inspector
+beside the monitor. Pause/Resume, keyboard shortcuts, large-text layouts, and
+reduced-motion support are included.
 
-Windows: always-on-top window and NIC bind. Linux: `.deb` and `.rpm`.
+Settings include probe timing, custom HTTPS targets, the DNS comparison hostname,
+privacy, and update checks. Desktop socket binding is distinct from system DNS
+resolution. Compact mode and always-on-top are independent controls.
+
+## Session data and reports
+
+Results remain in memory: up to 120 recent measurements per target, session
+counters, a bounded change log, and one captured comparison baseline. Restarting
+clears these; settings persist. Monitoring configuration changes start a new
+measurement context. Android monitoring is foreground-based.
+
+Preview and copy Markdown, CSV, plain text, or schema-versioned JSON reports. Redaction is on
+by default and remains enabled in privacy mode. Reports cover every probe category.
+HTTP errors, private DNS answers, and unavailable IPv6 are observations, not proof
+of censorship or a failed connection overall.
 
 ## Run
 
@@ -21,6 +42,17 @@ Windows: always-on-top window and NIC bind. Linux: `.deb` and `.rpm`.
 flutter pub get
 flutter run
 ```
+
+The project uses Flutter 3.44.2 / Dart 3.12.2. Regression checks use local network
+fixtures and fake transports rather than depending on public internet availability.
+
+```bash
+flutter analyze --no-pub
+flutter test --no-pub
+```
+
+See [the overhaul plan](docs/overhaul-plan.md) and
+[validation progress and remaining limitations](docs/overhaul-progress.md).
 
 ## CI
 

@@ -1,51 +1,51 @@
 import 'dart:async';
 import 'dart:io';
-
+import 'cancellation.dart';
 import 'models.dart';
+import '../settings/app_settings.dart';
 
 class TcpTlsProbe {
-  TcpTlsProbe({this.sourceAddress});
-
+  TcpTlsProbe({this.sourceAddress, this.securityContext});
   final InternetAddress? sourceAddress;
+
+  /// Injectable trust store for deterministic local TLS fixtures.
+  final SecurityContext? securityContext;
 
   Future<Hit> connect(
     String host,
     int port, {
     required Duration timeout,
+    CancellationToken? token,
   }) async {
-    final sw = Stopwatch()..start();
+    final cancel = CancellationToken();
+    final unlink = token?.onCancel(cancel.cancel);
+    final watch = Stopwatch()..start();
+    Socket? socket;
     try {
-      final socket = await Socket.connect(
+      cancel.check();
+      final task = await Socket.startConnect(
         host,
         port,
-        timeout: timeout,
         sourceAddress: sourceAddress,
       );
-      sw.stop();
-      socket.destroy();
+      cancel.onCancel(task.cancel);
+      task.socket.then((s) {
+        if (cancel.isCancelled) s.destroy();
+      }, onError: (Object _) {});
+      socket = await cancel.bind(task.socket).timeout(timeout);
       return Hit(
         status: HitStatus.ok,
-        ms: sw.elapsedMilliseconds,
+        ms: watch.elapsedMilliseconds,
         at: DateTime.now(),
-      );
-    } on SocketException catch (e) {
-      sw.stop();
-      return _fromSocket(e, sw.elapsedMilliseconds);
-    } on TimeoutException {
-      sw.stop();
-      return Hit(
-        status: HitStatus.timeout,
-        ms: sw.elapsedMilliseconds,
-        at: DateTime.now(),
+        detail: 'TCP connection established',
+        phase: PhaseBreakdown(tcpMs: watch.elapsedMilliseconds),
       );
     } catch (e) {
-      sw.stop();
-      return Hit(
-        status: HitStatus.fail,
-        ms: sw.elapsedMilliseconds,
-        detail: 'fail',
-        at: DateTime.now(),
-      );
+      return failure(e, watch.elapsedMilliseconds);
+    } finally {
+      socket?.destroy();
+      unlink?.call();
+      cancel.cancel();
     }
   }
 
@@ -54,426 +54,258 @@ class TcpTlsProbe {
     String sni, {
     required Duration timeout,
     int port = 443,
+    bool verifyCertificate = false,
+    CancellationToken? token,
   }) async {
-    final sw = Stopwatch()..start();
+    final cancel = CancellationToken();
+    final unlink = token?.onCancel(cancel.cancel);
+    final watch = Stopwatch()..start();
     Socket? raw;
     SecureSocket? secure;
+    int? tcpMs;
     try {
-      raw = await Socket.connect(
+      cancel.check();
+      final task = await Socket.startConnect(
         ip,
         port,
-        timeout: timeout,
         sourceAddress: sourceAddress,
       );
-      secure = await SecureSocket.secure(
-        raw,
-        host: sni,
-        onBadCertificate: (_) => true,
-      ).timeout(timeout);
-      sw.stop();
+      cancel.onCancel(task.cancel);
+      task.socket.then((s) {
+        if (cancel.isCancelled) s.destroy();
+      }, onError: (Object _) {});
+      raw = await cancel.bind(task.socket).timeout(timeout);
+      cancel.onCancel(raw.destroy);
+      tcpMs = watch.elapsedMilliseconds;
+      final remaining = timeout - watch.elapsed;
+      if (remaining <= Duration.zero) throw TimeoutException('TLS deadline');
+      secure = await cancel
+          .bind(
+            SecureSocket.secure(
+              raw,
+              host: sni,
+              context: securityContext,
+              onBadCertificate: verifyCertificate ? null : (_) => true,
+            ),
+          )
+          .timeout(remaining);
+      cancel.onCancel(secure.destroy);
       return Hit(
         status: HitStatus.ok,
-        ms: sw.elapsedMilliseconds,
+        ms: watch.elapsedMilliseconds,
         at: DateTime.now(),
+        detail: 'TLS handshake completed',
+        warning: verifyCertificate
+            ? null
+            : 'Handshake only. Certificate identity was not verified.',
+        phase: PhaseBreakdown(
+          tcpMs: tcpMs,
+          tlsMs: watch.elapsedMilliseconds - tcpMs,
+          certificateVerified: verifyCertificate,
+        ),
       );
-    } on TimeoutException {
-      sw.stop();
-      return Hit(
-        status: HitStatus.timeout,
-        ms: sw.elapsedMilliseconds,
-        at: DateTime.now(),
-      );
-    } on HandshakeException {
-      sw.stop();
-      return Hit(
-        status: HitStatus.fail,
-        ms: sw.elapsedMilliseconds,
-        detail: 'hs',
-        at: DateTime.now(),
-      );
-    } on SocketException catch (e) {
-      sw.stop();
-      return _fromSocket(e, sw.elapsedMilliseconds);
     } catch (e) {
-      sw.stop();
-      return Hit(
-        status: HitStatus.fail,
-        ms: sw.elapsedMilliseconds,
-        detail: 'fail',
-        at: DateTime.now(),
-      );
+      return failure(e, watch.elapsedMilliseconds);
     } finally {
-      try {
-        await secure?.close();
-      } catch (_) {}
+      secure?.destroy();
       raw?.destroy();
+      unlink?.call();
+      cancel.cancel();
     }
   }
 
-  Future<Hit> https(String host, {required Duration timeout}) async {
-    final sw = Stopwatch()..start();
-    bool isPoisoned = isPrivateOrPoisonedIp(host);
-    String? poisonedIp = isPoisoned ? host : null;
-
-    // Check DNS resolution for private / poisoned IP without skipping HTTP
-    try {
-      final addrs = await InternetAddress.lookup(host).timeout(
-        timeout > const Duration(seconds: 2) ? const Duration(seconds: 2) : timeout,
-      );
-      for (final a in addrs) {
-        if (isPrivateOrPoisonedIp(a.address)) {
-          isPoisoned = true;
-          poisonedIp = a.address;
-          break;
-        }
-      }
-    } catch (_) {}
-
-    HttpClient? client;
-    try {
-      client = HttpClient();
-      client.connectionTimeout = timeout;
-      client.idleTimeout = timeout;
-      client.userAgent = 'NetChecker/1.0';
-      client.badCertificateCallback = (cert, host, port) => true;
-      if (sourceAddress != null) {
-        final bind = sourceAddress!;
-        client.connectionFactory = (uri, proxyHost, proxyPort) {
-          return Socket.startConnect(uri.host, uri.port, sourceAddress: bind);
-        };
-      }
-      final uri = Uri.parse('https://$host/');
-      final req = await client.openUrl('HEAD', uri).timeout(timeout);
-      req.followRedirects = false;
-      var res = await req.close().timeout(timeout);
-      if (res.statusCode == 405 || res.statusCode == 501) {
-        await res.drain<void>();
-        final get = await client.getUrl(uri).timeout(timeout);
-        get.followRedirects = false;
-        res = await get.close().timeout(timeout);
-      }
-      await res.drain<void>();
-      sw.stop();
-      final code = res.statusCode;
-      final ok = code < 500 && !isPoisoned;
-      return Hit(
-        status: ok ? HitStatus.ok : HitStatus.fail,
-        ms: sw.elapsedMilliseconds,
-        detail: poisonedIp ?? '$code',
-        isPoisoned: isPoisoned,
-        at: DateTime.now(),
-      );
-    } on TimeoutException {
-      sw.stop();
-      return Hit(
-        status: HitStatus.timeout,
-        ms: sw.elapsedMilliseconds,
-        detail: poisonedIp ?? 'to',
-        isPoisoned: isPoisoned,
-        at: DateTime.now(),
-      );
-    } on SocketException catch (e) {
-      sw.stop();
-      return _fromSocket(e, sw.elapsedMilliseconds, isPoisoned: isPoisoned, poisonedIp: poisonedIp);
-    } on HandshakeException {
-      sw.stop();
-      return Hit(
-        status: HitStatus.fail,
-        ms: sw.elapsedMilliseconds,
-        detail: poisonedIp ?? 'tls',
-        isPoisoned: isPoisoned,
-        at: DateTime.now(),
-      );
-    } catch (e) {
-      sw.stop();
-      return Hit(
-        status: HitStatus.fail,
-        ms: sw.elapsedMilliseconds,
-        detail: poisonedIp ?? 'fail',
-        isPoisoned: isPoisoned,
-        at: DateTime.now(),
-      );
-    } finally {
-      client?.close(force: true);
-    }
-  }
-
-  Future<ProbeSample> deepHttps(
+  Future<Hit> https(
     String host, {
     required Duration timeout,
+    CancellationToken? token,
+  }) => request(parseWebsite(host), timeout: timeout, token: token);
+
+  /// HttpClient's factory owns DNS, TCP and TLS. Returning a raw Socket for an
+  /// https URI bypasses TLS: the factory must return the secured connection.
+  Future<Hit> request(
+    Uri uri, {
+    required Duration timeout,
+    CancellationToken? token,
   }) async {
-    int? dnsMs;
-    List<String> resolvedIps = [];
-    int? tcpMs;
-    int? tlsMs;
-    int? httpMs;
-    int? httpStatusCode;
-    String? anomaly;
+    final cancel = CancellationToken();
+    final unlink = token?.onCancel(cancel.cancel);
+    final watch = Stopwatch()..start();
+    final client = HttpClient(context: securityContext);
+    cancel.onCancel(() => client.close(force: true));
+    int? dnsMs, tcpMs, tlsMs;
+    int? code;
+    var method = 'HEAD';
+    var phaseName = 'DNS';
+    final addresses = <String>{};
+    Duration remaining() {
+      cancel.check();
+      final left = timeout - watch.elapsed;
+      if (left <= Duration.zero) throw TimeoutException('Probe deadline');
+      return left;
+    }
 
-    final overallSw = Stopwatch()..start();
-
-    // 1. DNS Phase
-    final dnsSw = Stopwatch()..start();
-    try {
-      final addrs = await InternetAddress.lookup(host).timeout(timeout);
-      dnsSw.stop();
-      dnsMs = dnsSw.elapsedMilliseconds;
-      resolvedIps = addrs.map((a) => a.address).toList();
-
-      for (final ip in resolvedIps) {
-        if (isPrivateOrPoisonedIp(ip)) {
-          anomaly = 'DNS Poisoning (Gov Sinkhole $ip)';
-          break;
+    Future<T> bounded<T>(Future<T> work) =>
+        cancel.bind(work).timeout(remaining());
+    client.findProxy = (_) => 'DIRECT';
+    client.userAgent = 'NetChecker';
+    client.connectionFactory = (url, proxyHost, proxyPort) async {
+      Future<Socket> open() async {
+        phaseName = 'DNS';
+        final phase = Stopwatch()..start();
+        final literal = InternetAddress.tryParse(url.host);
+        final resolved = literal == null
+            ? await bounded(
+                InternetAddress.lookup(
+                  url.host,
+                  type: sourceAddress?.type ?? InternetAddressType.any,
+                ),
+              )
+            : [literal];
+        cancel.check();
+        dnsMs = (dnsMs ?? 0) + phase.elapsedMilliseconds;
+        addresses.addAll(resolved.map((a) => a.address));
+        if (resolved.isEmpty) {
+          throw const SocketException('DNS returned no addresses');
         }
+        phaseName = 'TCP';
+        Socket? raw;
+        Object? lastError;
+        phase.reset();
+        for (final address in resolved) {
+          cancel.check();
+          try {
+            final task = await bounded(
+              Socket.startConnect(
+                address,
+                url.port,
+                sourceAddress: sourceAddress,
+              ),
+            );
+            cancel.onCancel(task.cancel);
+            task.socket.then((s) {
+              if (cancel.isCancelled) s.destroy();
+            }, onError: (Object _) {});
+            raw = await bounded(task.socket);
+            cancel.onCancel(raw!.destroy);
+            break;
+          } on SocketException catch (e) {
+            lastError = e;
+          }
+        }
+        tcpMs = (tcpMs ?? 0) + phase.elapsedMilliseconds;
+        if (raw == null) {
+          throw lastError ?? const SocketException('Connection failed');
+        }
+        phaseName = 'TLS';
+        phase.reset();
+        final handshake = SecureSocket.secure(
+          raw,
+          host: url.host,
+          context: securityContext,
+        );
+        handshake.then((s) {
+          if (cancel.isCancelled) s.destroy();
+        }, onError: (Object _) {});
+        final secure = await bounded(handshake);
+        cancel.onCancel(secure.destroy);
+        tlsMs = (tlsMs ?? 0) + phase.elapsedMilliseconds;
+        phaseName = 'HTTP';
+        return secure;
       }
-    } on TimeoutException {
-      dnsSw.stop();
-      return ProbeSample(
-        timestamp: DateTime.now(),
-        status: HitStatus.timeout,
-        ms: dnsSw.elapsedMilliseconds,
-        detail: 'to',
-        phase: PhaseBreakdown(
-          dnsMs: dnsMs,
-          anomaly: 'DNS Lookup Timed Out',
-        ),
-      );
-    } catch (e) {
-      dnsSw.stop();
-      return ProbeSample(
-        timestamp: DateTime.now(),
-        status: HitStatus.fail,
-        ms: dnsSw.elapsedMilliseconds,
-        detail: 'nx',
-        phase: PhaseBreakdown(
-          dnsMs: dnsMs,
-          anomaly: 'DNS Resolution Failed ($e)',
-        ),
-      );
-    }
 
-    // 2. TCP Connect Phase
-    final connectHost = resolvedIps.isNotEmpty ? resolvedIps.first : host;
-    final tcpSw = Stopwatch()..start();
-    Socket? socket;
-    try {
-      socket = await Socket.connect(
-        connectHost,
-        443,
-        sourceAddress: sourceAddress,
-        timeout: timeout,
-      );
-      tcpSw.stop();
-      tcpMs = tcpSw.elapsedMilliseconds;
-    } on TimeoutException {
-      tcpSw.stop();
-      return ProbeSample(
-        timestamp: DateTime.now(),
-        status: HitStatus.timeout,
-        ms: overallSw.elapsedMilliseconds,
-        detail: 'to',
-        phase: PhaseBreakdown(
-          dnsMs: dnsMs,
-          resolvedIps: resolvedIps,
-          tcpMs: tcpSw.elapsedMilliseconds,
-          anomaly: 'TCP Connection Timed Out (Blackhole)',
-        ),
-      );
-    } on SocketException catch (e) {
-      tcpSw.stop();
-      final hit = _fromSocket(e, tcpSw.elapsedMilliseconds);
-      final isRst = hit.detail == 'rst';
-      return ProbeSample(
-        timestamp: DateTime.now(),
-        status: hit.status,
-        ms: overallSw.elapsedMilliseconds,
-        detail: hit.detail,
-        phase: PhaseBreakdown(
-          dnsMs: dnsMs,
-          resolvedIps: resolvedIps,
-          tcpMs: tcpSw.elapsedMilliseconds,
-          anomaly: isRst ? 'TCP Reset (DPI RST Injected)' : 'TCP Connect Refused/Failed',
-        ),
-      );
-    } catch (e) {
-      tcpSw.stop();
-      return ProbeSample(
-        timestamp: DateTime.now(),
-        status: HitStatus.fail,
-        ms: overallSw.elapsedMilliseconds,
-        detail: 'fail',
-        phase: PhaseBreakdown(
-          dnsMs: dnsMs,
-          resolvedIps: resolvedIps,
-          tcpMs: tcpSw.elapsedMilliseconds,
-          anomaly: 'TCP Error ($e)',
-        ),
-      );
-    }
-
-    // 3. TLS Handshake Phase
-    final tlsSw = Stopwatch()..start();
-    SecureSocket? secure;
-    try {
-      secure = await SecureSocket.secure(
-        socket,
-        host: host,
-        onBadCertificate: (_) => true,
-      ).timeout(timeout);
-      tlsSw.stop();
-      tlsMs = tlsSw.elapsedMilliseconds;
-    } on TimeoutException {
-      tlsSw.stop();
-      try {
-        socket.destroy();
-      } catch (_) {}
-      return ProbeSample(
-        timestamp: DateTime.now(),
-        status: HitStatus.timeout,
-        ms: overallSw.elapsedMilliseconds,
-        detail: 'to',
-        phase: PhaseBreakdown(
-          dnsMs: dnsMs,
-          resolvedIps: resolvedIps,
-          tcpMs: tcpMs,
-          tlsMs: tlsSw.elapsedMilliseconds,
-          anomaly: 'TLS Handshake Timed Out (SNI Filter)',
-        ),
-      );
-    } on HandshakeException catch (e) {
-      tlsSw.stop();
-      try {
-        socket.destroy();
-      } catch (_) {}
-      return ProbeSample(
-        timestamp: DateTime.now(),
-        status: HitStatus.fail,
-        ms: overallSw.elapsedMilliseconds,
-        detail: 'tls',
-        phase: PhaseBreakdown(
-          dnsMs: dnsMs,
-          resolvedIps: resolvedIps,
-          tcpMs: tcpMs,
-          tlsMs: tlsSw.elapsedMilliseconds,
-          anomaly: 'TLS Handshake Rejected (SNI Block: $e)',
-        ),
-      );
-    } catch (e) {
-      tlsSw.stop();
-      try {
-        socket.destroy();
-      } catch (_) {}
-      return ProbeSample(
-        timestamp: DateTime.now(),
-        status: HitStatus.fail,
-        ms: overallSw.elapsedMilliseconds,
-        detail: 'tls',
-        phase: PhaseBreakdown(
-          dnsMs: dnsMs,
-          resolvedIps: resolvedIps,
-          tcpMs: tcpMs,
-          tlsMs: tlsSw.elapsedMilliseconds,
-          anomaly: 'TLS Handshake Failed ($e)',
-        ),
-      );
-    }
-
-    // 4. HTTP HEAD / Status Phase
-    final httpSw = Stopwatch()..start();
-    HttpClient? client;
-    try {
-      client = HttpClient();
-      client.connectionTimeout = timeout;
-      client.idleTimeout = timeout;
-      client.userAgent = 'NetChecker/1.0';
-      client.badCertificateCallback = (cert, host, port) => true;
-      if (sourceAddress != null) {
-        final bind = sourceAddress!;
-        client.connectionFactory = (uri, proxyHost, proxyPort) {
-          return Socket.startConnect(uri.host, uri.port, sourceAddress: bind);
-        };
-      }
-      final uri = Uri.parse('https://$host/');
-      final req = await client.openUrl('HEAD', uri).timeout(timeout);
-      req.followRedirects = false;
-      var res = await req.close().timeout(timeout);
-      if (res.statusCode == 405 || res.statusCode == 501) {
-        await res.drain<void>();
-        final get = await client.getUrl(uri).timeout(timeout);
-        get.followRedirects = false;
-        res = await get.close().timeout(timeout);
-      }
-      await res.drain<void>();
-      httpSw.stop();
-      httpMs = httpSw.elapsedMilliseconds;
-      httpStatusCode = res.statusCode;
-
-      if (res.statusCode == 403) {
-        anomaly = 'HTTP 403 (Censorship / Forbidden)';
-      }
-    } catch (_) {
-      httpSw.stop();
-      httpMs = httpSw.elapsedMilliseconds;
-      httpStatusCode = 200;
-    } finally {
-      client?.close(force: true);
-      try {
-        await secure.close();
-      } catch (_) {}
-      socket.destroy();
-    }
-
-    overallSw.stop();
-    final ok = httpStatusCode < 500 && anomaly == null;
-
-    return ProbeSample(
-      timestamp: DateTime.now(),
-      status: ok ? HitStatus.ok : (anomaly != null ? HitStatus.fail : HitStatus.ok),
-      ms: overallSw.elapsedMilliseconds,
-      detail: '$httpStatusCode',
-      phase: PhaseBreakdown(
-        dnsMs: dnsMs,
-        resolvedIps: resolvedIps,
-        tcpMs: tcpMs,
-        tlsMs: tlsMs,
-        httpMs: httpMs,
-        httpStatusCode: httpStatusCode,
-        anomaly: anomaly,
-      ),
+      return ConnectionTask.fromSocket(open(), cancel.cancel);
+    };
+    PhaseBreakdown phases({String? error}) => PhaseBreakdown(
+      dnsMs: dnsMs,
+      resolvedIps: List.unmodifiable(addresses),
+      tcpMs: tcpMs,
+      tlsMs: tlsMs,
+      httpMs: phaseName == 'HTTP'
+          ? (watch.elapsedMilliseconds -
+                    (dnsMs ?? 0) -
+                    (tcpMs ?? 0) -
+                    (tlsMs ?? 0))
+                .clamp(0, 1 << 31)
+          : null,
+      httpStatusCode: code,
+      certificateVerified: phaseName == 'HTTP' ? true : null,
+      anomaly: error,
+      method: method,
     );
+    try {
+      Future<HttpClientResponse> send(String verb) async {
+        final request = await bounded(client.openUrl(verb, uri));
+        request.followRedirects = false;
+        if (verb == 'GET') {
+          request.headers.set(HttpHeaders.rangeHeader, 'bytes=0-0');
+        }
+        return bounded(request.close());
+      }
+
+      var response = await send('HEAD');
+      if (response.statusCode == 405 || response.statusCode == 501) {
+        await bounded(response.drain<void>());
+        method = 'HEAD → GET';
+        response = await send('GET');
+      }
+      code = response.statusCode;
+      // Headers establish reachability; never download an unbounded GET body.
+      await response.listen((_) {}).cancel();
+      final warning = code >= 400
+          ? 'The server responded with HTTP $code. This alone does not establish network filtering.'
+          : addresses.any(isNonPublicAddress)
+          ? 'Resolved to a private or synthetic address. This can be expected on local networks and VPNs.'
+          : null;
+      return Hit(
+        status: HitStatus.ok,
+        ms: watch.elapsedMilliseconds,
+        at: DateTime.now(),
+        detail: 'HTTP $code',
+        warning: warning,
+        phase: phases(),
+      );
+    } catch (e) {
+      final result = failure(e, watch.elapsedMilliseconds, phase: phaseName);
+      return Hit(
+        status: result.status,
+        ms: result.ms,
+        detail: result.detail,
+        at: result.at,
+        phase: phases(error: result.detail),
+      );
+    } finally {
+      client.close(force: true);
+      unlink?.call();
+      cancel.cancel();
+    }
   }
 }
 
-Hit _fromSocket(
-  SocketException e,
-  int ms, {
-  bool isPoisoned = false,
-  String? poisonedIp,
-}) {
-  final m = e.message.toLowerCase();
-  final os = (e.osError?.message ?? '').toLowerCase();
-  final blob = '$m $os';
-  if (blob.contains('timed out') || blob.contains('timeout')) {
-    return Hit(
-      status: HitStatus.timeout,
-      ms: ms,
-      detail: poisonedIp ?? 'to',
-      isPoisoned: isPoisoned,
-      at: DateTime.now(),
-    );
+Hit failure(Object error, int elapsed, {String? phase}) {
+  if (error is ProbeCancelled) return Hit.cancelled;
+  String detail;
+  var status = HitStatus.fail;
+  if (error is TimeoutException) {
+    detail = phase == null ? 'Timed out' : '$phase timed out';
+    status = HitStatus.timeout;
+  } else if (error is HandshakeException) {
+    detail = 'Certificate or TLS error';
+  } else if (error is SocketException) {
+    final message = '${error.message} ${error.osError?.message}'.toLowerCase();
+    if (message.contains('timed out') || message.contains('timeout')) {
+      detail = 'Timed out';
+      status = HitStatus.timeout;
+    } else if (phase == 'DNS') {
+      detail = 'DNS lookup failed';
+    } else if (message.contains('refused')) {
+      detail = 'Connection refused';
+    } else if (message.contains('reset')) {
+      detail = 'Connection reset';
+    } else {
+      detail = 'Connection failed';
+    }
+  } else {
+    detail = phase == null ? 'Check failed' : '$phase failed';
   }
-  String detail = 'fail';
-  if (blob.contains('unreachable')) detail = 'unreach';
-  if (blob.contains('refused')) detail = 'refused';
-  if (blob.contains('reset')) detail = 'rst';
-  if (blob.contains('failed host lookup') || blob.contains('name or service')) {
-    detail = 'nx';
-  }
-  return Hit(
-    status: HitStatus.fail,
-    ms: ms,
-    detail: poisonedIp ?? detail,
-    isPoisoned: isPoisoned,
-    at: DateTime.now(),
-  );
+  return Hit(status: status, ms: elapsed, detail: detail, at: DateTime.now());
 }

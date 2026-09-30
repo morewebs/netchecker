@@ -1,1301 +1,396 @@
-import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-
 import '../../probe/engine.dart';
 import '../../probe/models.dart';
+import '../../probe/traceroute.dart';
 import '../../theme.dart';
-import '../keyboard/shortcuts.dart';
-import 'latency_chart.dart';
-import 'latency_histogram.dart';
+import '../presentation.dart';
+import '../strings.dart';
 import 'route_map_page.dart';
-import 'waterfall_card.dart';
 
-class ItemProfilePage extends StatefulWidget {
+class ItemProfilePage extends StatelessWidget {
   const ItemProfilePage({
     super.key,
     required this.engine,
-    required this.targetInfo,
-    this.autoProbe = false,
+    required this.target,
   });
-
   final ProbeEngine engine;
-  final ItemProfileInfo targetInfo;
-  final bool autoProbe;
-
+  final ProbeTarget target;
   static Future<void> open(
     BuildContext context, {
     required ProbeEngine engine,
-    required ItemProfileInfo targetInfo,
-    bool autoProbe = false,
-  }) {
-    return Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (ctx) => ItemProfilePage(
-          engine: engine,
-          targetInfo: targetInfo,
-          autoProbe: autoProbe,
-        ),
-      ),
-    );
-  }
-
-  @override
-  State<ItemProfilePage> createState() => _ItemProfilePageState();
-}
-
-class _ItemProfilePageState extends State<ItemProfilePage> {
-  bool _isProbing = false;
-  bool _liveMonitor = false;
-  int _chartTab = 0;
-  Timer? _liveTimer;
-  PhaseBreakdown? _latestPhase;
-  final FocusNode _profileFocusNode = FocusNode(debugLabel: 'ItemProfilePage');
-
-  @override
-  void initState() {
-    super.initState();
-    _loadInitialPhase();
-    if (widget.autoProbe) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _triggerPing(silent: false);
-        }
-      });
-    }
-  }
-
-  void _loadInitialPhase() {
-    final samples = widget.engine.getHistory(widget.targetInfo.id);
-    for (final s in samples.reversed) {
-      if (s.phase != null) {
-        _latestPhase = s.phase;
-        break;
-      }
-    }
-    if (_latestPhase == null) {
-      final current = _getCurrentHit();
-      if (current.status == HitStatus.ok && current.ms != null) {
-        if (widget.targetInfo.category == ItemCategory.dns) {
-          _latestPhase = PhaseBreakdown(dnsMs: current.ms);
-        } else if (widget.targetInfo.category == ItemCategory.edge) {
-          _latestPhase = PhaseBreakdown(tlsMs: current.ms);
-        } else if (widget.targetInfo.category == ItemCategory.proto) {
-          _latestPhase = PhaseBreakdown(tcpMs: current.ms);
-        }
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _liveTimer?.cancel();
-    super.dispose();
-  }
-
-  void _toggleLiveMonitor(bool value) {
-    setState(() => _liveMonitor = value);
-    _liveTimer?.cancel();
-    if (value) {
-      _liveTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (!_isProbing && mounted) {
-          _triggerPing(silent: true);
-        }
-      });
-      _triggerPing(silent: true);
-    }
-  }
-
-  Future<void> _triggerPing({bool silent = false}) async {
-    if (_isProbing) return;
-    if (!silent) setState(() => _isProbing = true);
-    try {
-      final sample = await widget.engine.runDeepProbe(widget.targetInfo);
-      if (mounted) {
-        setState(() {
-          if (sample.phase != null) {
-            _latestPhase = sample.phase;
-          }
-        });
-      }
-    } finally {
-      if (!silent && mounted) {
-        setState(() => _isProbing = false);
-      }
-    }
-  }
-
-  Hit _getCurrentHit() {
-    final id = widget.targetInfo.id;
-    switch (widget.targetInfo.category) {
-      case ItemCategory.domain:
-        return widget.engine.domainHits[id] ?? Hit.idle;
-      case ItemCategory.dns:
-        return widget.engine.dnsHits[id] ?? Hit.idle;
-      case ItemCategory.edge:
-        return widget.engine.edgeHits[id] ?? Hit.idle;
-      case ItemCategory.hunt:
-        return widget.engine.huntHits[id] ?? Hit.idle;
-      case ItemCategory.proto:
-        return widget.engine.protoHits[id] ?? Hit.idle;
-    }
-  }
-
-  Color _getStatusAccent(HitStatus status, bool isClean) {
-    if (!isClean && status != HitStatus.idle) return kFail;
-    switch (status) {
-      case HitStatus.ok:
-        return const Color(0xFF10B981);
-      case HitStatus.timeout:
-        return const Color(0xFFF59E0B);
-      case HitStatus.fail:
-        return kFail;
-      case HitStatus.checking:
-        return const Color(0xFF06B6D4);
-      case HitStatus.idle:
-        return const Color(0xFF06B6D4);
-    }
-  }
-
-  Future<void> _copyReport(ItemMetrics metrics, List<ProbeSample> samples) async {
-    final buf = StringBuffer();
-    buf.writeln('Telemetry Report: ${widget.targetInfo.title}');
-    buf.writeln('Target: ${widget.targetInfo.hostOrIp ?? widget.targetInfo.id}');
-    buf.writeln('Category: ${widget.targetInfo.categoryLabel}');
-    buf.writeln('Status: ${metrics.filterStatus}');
-    buf.writeln('Avg Latency: ${metrics.avgMs > 0 ? "${metrics.avgMs.toStringAsFixed(1)}ms" : "N/A"}');
-    buf.writeln('Success Rate: ${metrics.uptimePercent.round()}%');
-    buf.writeln('Jitter (StdDev): ±${metrics.stdDevMs.toStringAsFixed(1)}ms');
-    buf.writeln('Loss: ${metrics.lossPercent.round()}%');
-    buf.writeln('Total Samples: ${metrics.totalChecks}');
-    if (widget.targetInfo.explanation != null) {
-      buf.writeln('Description: ${widget.targetInfo.explanation}');
-    }
-    await Clipboard.setData(ClipboardData(text: buf.toString()));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Report copied to clipboard')),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: widget.engine,
-      builder: (context, _) {
-        final currentHit = _getCurrentHit();
-        final samples = widget.engine.getHistory(widget.targetInfo.id);
-        final metrics = widget.engine.getMetrics(
-          widget.targetInfo.id,
-          currentHit: currentHit,
-        );
-        final accent = _getStatusAccent(currentHit.status, metrics.isClean);
-
-        return Shortcuts(
-          shortcuts: <ShortcutActivator, Intent>{
-            const SingleActivator(LogicalKeyboardKey.escape): const EscapeIntent(),
-            const SingleActivator(LogicalKeyboardKey.backspace): const EscapeIntent(),
-            const SingleActivator(LogicalKeyboardKey.gameButtonB): const EscapeIntent(),
-            const SingleActivator(LogicalKeyboardKey.goBack): const EscapeIntent(),
-            const SingleActivator(LogicalKeyboardKey.keyR): const PingNowIntent(),
-            const SingleActivator(LogicalKeyboardKey.enter): const PingNowIntent(),
-            const SingleActivator(LogicalKeyboardKey.gameButtonA): const PingNowIntent(),
-            const SingleActivator(LogicalKeyboardKey.gameButtonX): const PingNowIntent(),
-            const SingleActivator(LogicalKeyboardKey.keyT): const TracerouteIntent(),
-            const SingleActivator(LogicalKeyboardKey.gameButtonY): const TracerouteIntent(),
-            const SingleActivator(LogicalKeyboardKey.keyA): const ToggleAutoIntent(),
-            const SingleActivator(LogicalKeyboardKey.keyC): const CopyReportIntent(),
-            const SingleActivator(LogicalKeyboardKey.digit1): const PrevTabIntent(),
-            const SingleActivator(LogicalKeyboardKey.bracketLeft): const PrevTabIntent(),
-            const SingleActivator(LogicalKeyboardKey.gameButtonLeft1): const PrevTabIntent(),
-            const SingleActivator(LogicalKeyboardKey.digit2): const NextTabIntent(),
-            const SingleActivator(LogicalKeyboardKey.bracketRight): const NextTabIntent(),
-            const SingleActivator(LogicalKeyboardKey.gameButtonRight1): const NextTabIntent(),
-          },
-          child: Actions(
-            actions: <Type, Action<Intent>>{
-              EscapeIntent: CallbackAction<EscapeIntent>(
-                onInvoke: (_) {
-                  Navigator.pop(context);
-                  return null;
-                },
-              ),
-              PingNowIntent: CallbackAction<PingNowIntent>(
-                onInvoke: (_) {
-                  _triggerPing();
-                  return null;
-                },
-              ),
-              TracerouteIntent: CallbackAction<TracerouteIntent>(
-                onInvoke: (_) {
-                  RouteMapPage.open(
-                    context,
-                    target: widget.targetInfo.hostOrIp ?? widget.targetInfo.id,
-                    title: widget.targetInfo.title,
-                  );
-                  return null;
-                },
-              ),
-              ToggleAutoIntent: CallbackAction<ToggleAutoIntent>(
-                onInvoke: (_) {
-                  _toggleLiveMonitor(!_liveMonitor);
-                  return null;
-                },
-              ),
-              CopyReportIntent: CallbackAction<CopyReportIntent>(
-                onInvoke: (_) {
-                  _copyReport(metrics, samples);
-                  return null;
-                },
-              ),
-              PrevTabIntent: CallbackAction<PrevTabIntent>(
-                onInvoke: (_) {
-                  setState(() => _chartTab = 0);
-                  return null;
-                },
-              ),
-              NextTabIntent: CallbackAction<NextTabIntent>(
-                onInvoke: (_) {
-                  setState(() => _chartTab = 1);
-                  return null;
-                },
-              ),
-            },
-            child: Focus(
-              focusNode: _profileFocusNode,
-              autofocus: true,
-              canRequestFocus: true,
-              child: Scaffold(
-                backgroundColor: kInk,
-                appBar: AppBar(
-                  backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
-                  surfaceTintColor: Colors.transparent,
-                  elevation: 0,
-                  leading: IconButton(
-                    icon: const Icon(Icons.arrow_back_rounded, size: 20),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                  title: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHigh,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-                    ),
-                    child: Text(
-                      widget.targetInfo.categoryLabel,
-                      style: const TextStyle(
-                        fontFamily: 'Space Mono',
-                        color: kPaper,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 10.5,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ),
-                  actions: [
-                    IconButton(
-                      tooltip: 'Trace Route (T)',
-                      icon: const Icon(Icons.alt_route_rounded, size: 18),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-                        ),
-                        padding: const EdgeInsets.all(8),
-                      ),
-                      onPressed: () => RouteMapPage.open(
-                        context,
-                        target: widget.targetInfo.hostOrIp ?? widget.targetInfo.id,
-                        title: widget.targetInfo.title,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    IconButton(
-                      tooltip: 'Reset Stats',
-                      icon: const Icon(Icons.refresh_rounded, size: 18),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-                        ),
-                        padding: const EdgeInsets.all(8),
-                      ),
-                      onPressed: () {
-                        widget.engine.resetStats(widget.targetInfo.id);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Statistics reset for this item')),
-                        );
-                      },
-                    ),
-                    const SizedBox(width: 6),
-                    IconButton(
-                      tooltip: 'Copy Report (C)',
-                      icon: const Icon(Icons.copy_rounded, size: 18),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-                        ),
-                        padding: const EdgeInsets.all(8),
-                      ),
-                      onPressed: () => _copyReport(metrics, samples),
-                    ),
-                    const SizedBox(width: 12),
-                  ],
-                  bottom: PreferredSize(
-                    preferredSize: const Size.fromHeight(1),
-                    child: Divider(height: 1, color: Theme.of(context).colorScheme.outlineVariant),
-                  ),
-                ),
-          body: SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 32),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // 1. Hero Identity & Status
-                  _HeroBanner(
-                    targetInfo: widget.targetInfo,
-                    currentHit: currentHit,
-                    metrics: metrics,
-                    accentColor: accent,
-                    isProbing: _isProbing,
-                    liveMonitor: _liveMonitor,
-                    onToggleLive: _toggleLiveMonitor,
-                    onPingNow: () => _triggerPing(),
-                    onTraceRoute: () => RouteMapPage.open(
-                      context,
-                      target: widget.targetInfo.hostOrIp ?? widget.targetInfo.id,
-                      title: widget.targetInfo.title,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // 2. About This Item Card
-                  _AboutCard(
-                    targetInfo: widget.targetInfo,
-                  ),
-                  const SizedBox(height: 14),
-
-                  // 3. 4-Card Stats Grid
-                  _KpiMetricGrid(metrics: metrics, accentColor: accent),
-                  const SizedBox(height: 14),
-
-                  // 4. Chart / Histogram Switcher & Visualization (Segmented Tabs)
-                  Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF18181B),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: kLine),
-                    ),
-                    padding: const EdgeInsets.all(3),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: InkWell(
-                            onTap: () => setState(() => _chartTab = 0),
-                            borderRadius: BorderRadius.circular(6),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 150),
-                              padding: const EdgeInsets.symmetric(vertical: 7),
-                              decoration: BoxDecoration(
-                                color: _chartTab == 0 ? const Color(0xFF27272A) : Colors.transparent,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  'PING HISTORY',
-                                  style: TextStyle(
-                                    fontFamily: 'Space Mono',
-                                    fontSize: 10,
-                                    fontWeight: _chartTab == 0 ? FontWeight.w700 : FontWeight.w500,
-                                    color: _chartTab == 0 ? kPaper : kMute,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: InkWell(
-                            onTap: () => setState(() => _chartTab = 1),
-                            borderRadius: BorderRadius.circular(6),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 150),
-                              padding: const EdgeInsets.symmetric(vertical: 7),
-                              decoration: BoxDecoration(
-                                color: _chartTab == 1 ? const Color(0xFF27272A) : Colors.transparent,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  'FREQUENCY HISTOGRAM',
-                                  style: TextStyle(
-                                    fontFamily: 'Space Mono',
-                                    fontSize: 10,
-                                    fontWeight: _chartTab == 1 ? FontWeight.w700 : FontWeight.w500,
-                                    color: _chartTab == 1 ? kPaper : kMute,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  if (_chartTab == 0)
-                    ItemLatencyChart(
-                      samples: samples,
-                      accentColor: accent,
-                      height: 170,
-                    )
-                  else
-                    LatencyHistogramCard(
-                      samples: samples,
-                      accentColor: accent,
-                    ),
-                  const SizedBox(height: 14),
-
-                  // 5. Connection Steps Breakdown
-                  ConnectionWaterfallCard(
-                    phase: _latestPhase,
-                    targetInfo: widget.targetInfo,
-                    isProbing: _isProbing,
-                    onRunDeepProbe: () => _triggerPing(),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // 6. Details Table
-                  _DetailsCard(
-                    targetInfo: widget.targetInfo,
-                    engine: widget.engine,
-                      phase: _latestPhase,
-                    metrics: metrics,
-                  ),
-                  const SizedBox(height: 14),
-
-                  // 7. Recent Pings Log
-                  _RecentAuditLog(samples: samples, accentColor: accent),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+    required ProbeTarget target,
+  }) => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => ItemProfilePage(engine: engine, target: target),
     ),
   );
-      },
-    );
-  }
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Text(target.categoryLabel)),
+    body: SafeArea(
+      child: TargetInspector(engine: engine, target: target),
+    ),
+  );
 }
 
-class _HeroBanner extends StatelessWidget {
-  const _HeroBanner({
-    required this.targetInfo,
-    required this.currentHit,
-    required this.metrics,
-    required this.accentColor,
-    required this.isProbing,
-    required this.liveMonitor,
-    required this.onToggleLive,
-    required this.onPingNow,
-    required this.onTraceRoute,
+class TargetInspector extends StatelessWidget {
+  const TargetInspector({
+    super.key,
+    required this.engine,
+    required this.target,
+    this.onClose,
   });
-
-  final ItemProfileInfo targetInfo;
-  final Hit currentHit;
-  final ItemMetrics metrics;
-  final Color accentColor;
-  final bool isProbing;
-  final bool liveMonitor;
-  final ValueChanged<bool> onToggleLive;
-  final VoidCallback onPingNow;
-  final VoidCallback onTraceRoute;
-
-  String _getDisplayTag() {
-    if (targetInfo.category == ItemCategory.edge) {
-      return 'CDN';
-    }
-    if (targetInfo.tag != null && targetInfo.tag!.isNotEmpty) {
-      if (targetInfo.tag!.length <= 4) {
-        return targetInfo.tag!;
-      }
-    }
-    final clean = targetInfo.title.replaceAll(RegExp(r'^(https?://|www\.)'), '');
-    if (clean.length <= 3) return clean.toUpperCase();
-    final parts = clean.split('.');
-    if (parts.isNotEmpty && parts[0].isNotEmpty) {
-      return parts[0].substring(0, parts[0].length >= 3 ? 3 : parts[0].length).toUpperCase();
-    }
-    return clean.substring(0, 2).toUpperCase();
-  }
-
-  String _getHumanStatusText() {
-    if (currentHit.status == HitStatus.checking) {
-      return 'Pinging...';
-    }
-    if (currentHit.status == HitStatus.ok) {
-      final ms = currentHit.ms;
-      return ms != null && ms > 0 ? 'Online · ${ms}ms' : 'Online';
-    }
-    if (currentHit.status == HitStatus.timeout) {
-      return 'Timed Out';
-    }
-    if (currentHit.status == HitStatus.idle) {
-      return 'Checking...';
-    }
-    final detail = currentHit.detail ?? '';
-    if (currentHit.hasPrivateIp || isPrivateOrPoisonedIp(detail)) {
-      return detail.isNotEmpty
-          ? 'Blocked (DNS Poisoning: $detail)'
-          : 'Blocked (DNS Poisoning)';
-    }
-    if (detail.contains('rst')) return 'Connection Reset';
-    if (detail.contains('tls') || detail.contains('hs')) return 'SSL / TLS Error';
-    if (detail.contains('nx')) return 'DNS Failed';
-    return detail.isNotEmpty ? 'Failed ($detail)' : 'Offline';
-  }
-
+  final ProbeEngine engine;
+  final ProbeTarget target;
+  final VoidCallback? onClose;
   @override
-  Widget build(BuildContext context) {
-    final tag = _getDisplayTag();
-    final statusText = _getHumanStatusText();
-
-    return Container(
-      decoration: BoxDecoration(
-        color: kCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: kLine, width: 1),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: engine,
+    builder: (context, _) {
+      final hit = engine.hitFor(target.key),
+          metrics = engine.metricsFor(target.key),
+          counter = engine.counterFor(target.key);
+      final checking =
+          engine.executionFor(target.key) == ProbeExecution.checking;
+      final history = engine.historyFor(target.key), phase = hit.phase;
+      final before = engine.baseline?.results[target.key];
+      final privacy = engine.settings.privacyMode;
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Monogram Badge
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF18181B),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: accentColor.withValues(alpha: 0.5),
-                    width: 1.2,
-                  ),
-                ),
-                child: Center(
-                  child: Text(
-                    tag,
-                    style: TextStyle(
-                      fontFamily: 'Space Mono',
-                      fontWeight: FontWeight.w700,
-                      fontSize: tag.length > 3 ? 11 : (tag.length > 2 ? 13 : 16),
-                      color: accentColor,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-
-              // Title and Subtitle
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      targetInfo.title,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: kPaper,
-                            fontSize: 17,
-                            height: 1.2,
-                          ),
+                      targetName(engine, target),
+                      style: Theme.of(context).textTheme.titleLarge,
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      targetInfo.subtitle ?? targetInfo.id,
-                      style: const TextStyle(
-                        fontFamily: 'Space Mono',
-                        color: kMute,
-                        fontSize: 11,
-                      ),
+                    const SizedBox(height: 6),
+                    SelectableText(
+                      targetAddress(engine, target),
+                      style: mono.copyWith(color: kMute),
                     ),
                   ],
                 ),
               ),
+              if (onClose != null)
+                IconButton(
+                  tooltip: 'Close details',
+                  onPressed: onClose,
+                  icon: const Icon(Icons.close),
+                ),
             ],
           ),
-          const SizedBox(height: 14),
-
-          // Status Badge Pill
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: accentColor.withValues(alpha: 0.3),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _PulsingDot(color: accentColor),
-                const SizedBox(width: 7),
-                Text(
-                  statusText,
-                  style: TextStyle(
-                    fontFamily: 'Space Mono',
-                    color: accentColor,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-
-          // Primary Actions
+          const SizedBox(height: 24),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              StatusMark(hit: hit, checking: checking),
+              const SizedBox(width: 10),
               Expanded(
-                child: FilledButton.icon(
-                  onPressed: isProbing ? null : onPingNow,
-                  icon: isProbing
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: kInk,
-                          ),
-                        )
-                      : const Icon(Icons.refresh_rounded, size: 16),
-                  label: Text(
-                    isProbing ? 'Pinging...' : 'Ping Now',
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
-                  ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: kPaper,
-                    foregroundColor: kInk,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      hit.label,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: statusColor(hit.status),
+                      ),
                     ),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    minimumSize: const Size(40, 38),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: onTraceRoute,
-                icon: const Icon(Icons.alt_route_rounded, size: 15),
-                label: const Text('Trace', style: TextStyle(fontSize: 12)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: kPaper,
-                  side: const BorderSide(color: kLine),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  minimumSize: const Size(40, 38),
-                ),
-              ),
-              const SizedBox(width: 8),
-              InkWell(
-                onTap: () => onToggleLive(!liveMonitor),
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: liveMonitor
-                        ? const Color(0x1A10B981)
-                        : const Color(0xFF18181B),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: liveMonitor
-                          ? const Color(0xFF10B981).withValues(alpha: 0.4)
-                          : kLine,
-                    ),
-                  ),
-                  padding: const EdgeInsets.only(left: 10, right: 2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
+                    if (hit.detail != null && hit.detail != hit.label)
                       Text(
-                        'Auto',
-                        style: TextStyle(
-                          fontFamily: 'Space Mono',
-                          color: liveMonitor
-                              ? const Color(0xFF10B981)
-                              : kPaper,
-                          fontSize: 11,
-                          fontWeight: liveMonitor
-                              ? FontWeight.w600
-                              : FontWeight.w400,
-                        ),
+                        hit.detail!,
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
-                      const SizedBox(width: 2),
-                      Transform.scale(
-                        scale: 0.7,
-                        child: Switch(
-                          value: liveMonitor,
-                          onChanged: onToggleLive,
-                          activeThumbColor: const Color(0xFF10B981),
-                          activeTrackColor: const Color(0x4D10B981),
-                          inactiveThumbColor: kMute,
-                          inactiveTrackColor: const Color(0x28FFFFFF),
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                      ),
-                    ],
-                  ),
+                    Freshness(
+                      at: hit.at,
+                      prefix: checking ? 'Checking again · ' : '',
+                    ),
+                  ],
                 ),
               ),
+              if (hit.ms != null)
+                Text('${hit.ms} ms', style: mono.copyWith(fontSize: 18)),
             ],
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AboutCard extends StatelessWidget {
-  const _AboutCard({required this.targetInfo});
-
-  final ItemProfileInfo targetInfo;
-
-  @override
-  Widget build(BuildContext context) {
-    final whatItTests = targetInfo.whatItTests ??
-        'Tests ping and response time to ${targetInfo.title}.';
-    final whyItMatters = targetInfo.whyItMatters;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: kCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: kLine, width: 1),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+          const SizedBox(height: 20),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              const Icon(
-                Icons.info_outline_rounded,
-                color: Color(0xFF06B6D4),
-                size: 16,
+              FilledButton.icon(
+                onPressed: checking || !engine.adapterAvailable
+                    ? null
+                    : () => engine.runNow(target),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: Text(checking ? 'Checking' : AppStrings.checkNow),
               ),
-              const SizedBox(width: 8),
-              Text(
-                'ABOUT THIS ITEM',
-                style: const TextStyle(
-                  fontFamily: 'Space Mono',
-                  color: kPaper,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 11,
-                  letterSpacing: 0.5,
-                ),
+              OutlinedButton.icon(
+                onPressed: TracerouteEngine.instance.supported
+                    ? () => RouteMapPage.open(
+                        context,
+                        target: target.address,
+                        title: targetName(engine, target),
+                        privacyMode: privacy,
+                      )
+                    : null,
+                icon: const Icon(Icons.route_outlined, size: 18),
+                label: const Text('Trace route'),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Text(
-            whatItTests,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: kPaper.withValues(alpha: 0.9),
-                  fontSize: 12,
-                  height: 1.45,
-                ),
-          ),
-          if (whyItMatters != null && whyItMatters.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0xFF18181B),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: kLine),
-              ),
+          if (!TracerouteEngine.instance.supported)
+            const Padding(
+              padding: EdgeInsets.only(top: 10),
               child: Text(
-                whyItMatters,
-                style: const TextStyle(
-                  color: kMute,
-                  fontSize: 11,
-                  height: 1.4,
-                ),
+                'Route tracing is available on Windows and Linux.',
+                style: TextStyle(color: kMute, fontSize: 12),
               ),
             ),
+          if (hit.warning != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 18),
+              child: Text(hit.warning!, style: const TextStyle(color: kTo)),
+            ),
+          const SectionLabel('What this checks'),
+          Text(
+            privacy
+                ? '${target.categoryLabel}. Target details are hidden by privacy mode.'
+                : target.description,
+          ),
+          if (engine.settings.nicId != 'any' && target.uri != null)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text(
+                'Sockets use the selected adapter. Hostname resolution uses system DNS.',
+                style: TextStyle(color: kMute, fontSize: 12),
+              ),
+            ),
+          const SectionLabel('This network context'),
+          Wrap(
+            spacing: 24,
+            runSpacing: 16,
+            children: [
+              _Metric('Checks', '${counter.completed}'),
+              _Metric(
+                'Success',
+                counter.successRate == null
+                    ? '—'
+                    : '${counter.successRate!.toStringAsFixed(0)}%',
+              ),
+              _Metric(
+                'Average',
+                metrics.okCount == 0 ? '—' : '${metrics.avgMs.round()} ms',
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Success counts completed checks. Latency statistics use successful results in the recent history.',
+            style: TextStyle(color: kMute, fontSize: 12),
+          ),
+          SectionLabel(
+            'Recent checks',
+            trailing: Text(
+              '${history.length} / ${ProbeEngine.historyLimit}',
+              style: mono.copyWith(color: kMute),
+            ),
+          ),
+          if (history.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Text(
+                'Completed checks will appear here.',
+                style: TextStyle(color: kMute),
+              ),
+            )
+          else ...[
+            Semantics(
+              label:
+                  'Recent response times. ${metrics.okCount} successful checks, ${metrics.failCount} failed checks.',
+              child: SizedBox(
+                height: 92,
+                child: CustomPaint(painter: HistoryPainter(history)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            for (final sample in history.reversed.take(5))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    Text(
+                      clockTime(sample.timestamp),
+                      style: mono.copyWith(color: kMute),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        sample.detail ?? sample.status.name,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: statusColor(sample.status),
+                        ),
+                      ),
+                    ),
+                    if (sample.ms != null) Text('${sample.ms} ms', style: mono),
+                  ],
+                ),
+              ),
           ],
+          if (phase != null) ...[
+            const SectionLabel('Connection details'),
+            if (phase.dnsMs != null) _Detail('DNS lookup', '${phase.dnsMs} ms'),
+            if (phase.tcpMs != null)
+              _Detail('TCP connection', '${phase.tcpMs} ms'),
+            if (phase.tlsMs != null)
+              _Detail('TLS handshake', '${phase.tlsMs} ms'),
+            if (phase.httpMs != null)
+              _Detail('HTTP response', '${phase.httpMs} ms'),
+            if (phase.httpStatusCode != null)
+              _Detail('HTTP status', '${phase.httpStatusCode}'),
+            if (phase.dnsResponseCode != null)
+              _Detail('DNS response code', '${phase.dnsResponseCode}'),
+            if (phase.method != null) _Detail('Request', phase.method!),
+            if (phase.certificateVerified != null)
+              _Detail(
+                'Certificate',
+                phase.certificateVerified! ? 'Verified' : 'Not verified',
+              ),
+            if (phase.resolvedIps?.isNotEmpty == true)
+              _Detail(
+                'Addresses',
+                privacy ? 'Hidden' : phase.resolvedIps!.join('\n'),
+              ),
+          ],
+          if (engine.baseline != null) ...[
+            const SectionLabel('Compared with baseline'),
+            Text(
+              '${clockTime(engine.baseline!.at)} · ${privacy ? 'Adapter hidden' : engine.baseline!.context}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 10),
+            _Detail('Then', before?.label ?? 'No result captured'),
+            _Detail('Now', hit.label),
+            if (before?.status == HitStatus.ok &&
+                hit.status == HitStatus.ok &&
+                before?.ms != null &&
+                hit.ms != null)
+              _Detail(
+                'Response time',
+                '${hit.ms! - before!.ms! > 0 ? '+' : ''}${hit.ms! - before.ms!} ms',
+              ),
+          ],
+          const SectionLabel('Monitoring'),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Include in monitoring'),
+            value: engine.enabled(target.key),
+            onChanged: (v) => engine.setEnabled(target.key, v),
+          ),
+          TextButton.icon(
+            onPressed: () => engine.resetStats(target.key),
+            icon: const Icon(Icons.restart_alt, size: 18),
+            label: const Text('Clear this target’s results'),
+          ),
         ],
-      ),
-    );
-  }
+      );
+    },
+  );
 }
 
-class _PulsingDot extends StatefulWidget {
-  const _PulsingDot({required this.color});
-
-  final Color color;
-
+class _Metric extends StatelessWidget {
+  const _Metric(this.label, this.value);
+  final String label, value;
   @override
-  State<_PulsingDot> createState() => _PulsingDotState();
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(value, style: mono.copyWith(fontSize: 19)),
+      const SizedBox(height: 3),
+      Text(label, style: Theme.of(context).textTheme.bodySmall),
+    ],
+  );
 }
 
-class _PulsingDotState extends State<_PulsingDot>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-
+class _Detail extends StatelessWidget {
+  const _Detail(this.label, this.value);
+  final String label, value;
   @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 7),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(color: kMute, fontSize: 12),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: SelectableText(value, style: mono, textAlign: TextAlign.end),
+        ),
+      ],
+    ),
+  );
+}
+
+class HistoryPainter extends CustomPainter {
+  HistoryPainter(this.samples);
+  final List<ProbeSample> samples;
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (samples.isEmpty) return;
+    final maxMs = math.max(
+      1,
+      samples
+          .where((s) => s.status == HitStatus.ok)
+          .map((s) => s.ms ?? 0)
+          .fold(0, math.max),
     );
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _ctrl.stop();
-    } else if (!_ctrl.isAnimating) {
-      _ctrl.repeat(reverse: true);
+    final duration = math.max(
+      1,
+      samples.last.timestamp.difference(samples.first.timestamp).inMilliseconds,
+    );
+    final grid = Paint()
+      ..color = kLine
+      ..strokeWidth = 1;
+    canvas.drawLine(
+      Offset(0, size.height - 6),
+      Offset(size.width, size.height - 6),
+      grid,
+    );
+    Offset? previous;
+    for (var i = 0; i < samples.length; i++) {
+      final s = samples[i];
+      final x = samples.length == 1
+          ? size.width / 2
+          : (s.timestamp.difference(samples.first.timestamp).inMilliseconds /
+                        duration) *
+                    (size.width - 8) +
+                4;
+      final successful = s.status == HitStatus.ok && s.ms != null;
+      final y = successful
+          ? size.height - 10 - (s.ms! / maxMs) * (size.height - 20)
+          : size.height - 6;
+      final point = Offset(x, y),
+          ink = Paint()
+            ..color = statusColor(s.status)
+            ..strokeWidth = 1.5;
+      if (successful && previous != null) canvas.drawLine(previous, point, ink);
+      canvas.drawCircle(point, 2.5, ink);
+      previous = successful ? point : null;
     }
   }
 
   @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (context, _) {
-        final scale = 1.0 + (_ctrl.value * 0.3);
-        final opacity = 0.5 + (_ctrl.value * 0.5);
-        return Container(
-          width: 7 * scale,
-          height: 7 * scale,
-          decoration: BoxDecoration(
-            color: widget.color.withValues(alpha: opacity),
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: widget.color.withValues(alpha: 0.6),
-                blurRadius: 4 * scale,
-                spreadRadius: 1 * scale,
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _KpiMetricGrid extends StatelessWidget {
-  const _KpiMetricGrid({required this.metrics, required this.accentColor});
-
-  final ItemMetrics metrics;
-  final Color accentColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final avgStr = metrics.avgMs > 0 ? '${metrics.avgMs.toStringAsFixed(0)} ms' : '-';
-    final uptimeStr = metrics.totalChecks > 0
-        ? '${metrics.uptimePercent.toStringAsFixed(0)}%'
-        : '-';
-    final jitterStr = metrics.jitterMs > 0
-        ? '± ${metrics.jitterMs.toStringAsFixed(1)} ms'
-        : '± 0 ms';
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isWide = constraints.maxWidth > 500;
-        return GridView.count(
-          crossAxisCount: isWide ? 4 : 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: isWide ? 1.4 : 1.35,
-          children: [
-            _KpiCard(
-              label: 'AVERAGE PING',
-              value: avgStr,
-              subtext: metrics.minMs > 0
-                  ? 'Min ${metrics.minMs}ms · Max ${metrics.maxMs}ms'
-                  : 'Recent average',
-              icon: Icons.timer_outlined,
-              accentColor: accentColor,
-            ),
-            _KpiCard(
-              label: 'SUCCESS RATE',
-              value: uptimeStr,
-              subtext: '${metrics.okCount} of ${metrics.totalChecks} successful',
-              icon: Icons.verified_outlined,
-              accentColor: metrics.uptimePercent > 80
-                  ? const Color(0xFF10B981)
-                  : (metrics.uptimePercent > 40
-                      ? const Color(0xFFF59E0B)
-                      : kFail),
-            ),
-            _KpiCard(
-              label: 'STABILITY',
-              value: jitterStr,
-              subtext: 'StdDev ±${metrics.stdDevMs.toStringAsFixed(1)}ms',
-              icon: Icons.graphic_eq_rounded,
-              accentColor: const Color(0xFF8B5CF6),
-            ),
-            _KpiCard(
-              label: 'STATUS',
-              value: metrics.isClean ? 'Working' : 'Error',
-              subtext: metrics.filterStatus,
-              icon: metrics.isClean
-                  ? Icons.check_circle_outline_rounded
-                  : Icons.error_outline_rounded,
-              accentColor: metrics.isClean ? const Color(0xFF10B981) : kFail,
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _KpiCard extends StatelessWidget {
-  const _KpiCard({
-    required this.label,
-    required this.value,
-    required this.subtext,
-    required this.icon,
-    required this.accentColor,
-  });
-
-  final String label;
-  final String value;
-  final String subtext;
-  final IconData icon;
-  final Color accentColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: kCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: kLine, width: 1),
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: 'Space Mono',
-                    color: kMute,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 9.5,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ),
-              Icon(icon, size: 15, color: accentColor),
-            ],
-          ),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontFamily: 'Space Mono',
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: kPaper,
-            ),
-          ),
-          Text(
-            subtext,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontFamily: 'Space Mono',
-              color: kSubtle,
-              fontSize: 9.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DetailsCard extends StatelessWidget {
-  const _DetailsCard({
-    required this.targetInfo,
-    required this.engine,
-    required this.phase,
-    required this.metrics,
-  });
-
-  final ItemProfileInfo targetInfo;
-  final ProbeEngine engine;
-  final PhaseBreakdown? phase;
-  final ItemMetrics metrics;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: kCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: kLine, width: 1),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            'DETAILS',
-            style: TextStyle(
-              fontFamily: 'Space Mono',
-              color: kPaper,
-              fontWeight: FontWeight.w600,
-              fontSize: 11,
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(height: 12),
-          _SpecRow(label: 'Address / Host', value: targetInfo.id),
-          _SpecRow(label: 'Type', value: targetInfo.categoryLabel),
-          if (targetInfo.provider != null)
-            _SpecRow(label: 'Provider', value: targetInfo.provider!),
-          _SpecRow(
-            label: 'Port',
-            value: '${targetInfo.port} (${targetInfo.category == ItemCategory.dns ? "UDP" : "TCP"})',
-          ),
-          _SpecRow(label: 'Network', value: engine.nic.label),
-          if (phase?.resolvedIps != null && phase!.resolvedIps!.isNotEmpty)
-            _SpecRow(
-              label: 'Resolved IP',
-              value: phase!.resolvedIps!.join(', '),
-            ),
-          _SpecRow(
-            label: 'Result',
-            value: metrics.filterStatus,
-            isWarning: !metrics.isClean,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SpecRow extends StatelessWidget {
-  const _SpecRow({
-    required this.label,
-    required this.value,
-    this.isWarning = false,
-  });
-
-  final String label;
-  final String value;
-  final bool isWarning;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 130,
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 11.5,
-                color: kMute,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                fontFamily: 'Space Mono',
-                color: isWarning ? kFail : kPaper,
-                fontWeight: isWarning ? FontWeight.w600 : FontWeight.w400,
-                fontSize: 11.5,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RecentAuditLog extends StatelessWidget {
-  const _RecentAuditLog({required this.samples, required this.accentColor});
-
-  final List<ProbeSample> samples;
-  final Color accentColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final recent = samples.reversed.take(8).toList();
-
-    return Container(
-      decoration: BoxDecoration(
-        color: kCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: kLine, width: 1),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'RECENT PINGS',
-                style: TextStyle(
-                  fontFamily: 'Space Mono',
-                  color: kPaper,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 11,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              Text(
-                'Last ${recent.length}',
-                style: const TextStyle(
-                  fontFamily: 'Space Mono',
-                  color: kMute,
-                  fontSize: 10,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (recent.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(12),
-              child: Center(
-                child: Text(
-                  'No pings recorded yet',
-                  style: TextStyle(color: kMute, fontSize: 11),
-                ),
-              ),
-            )
-          else
-            for (final s in recent) ...[
-              _AuditItemRow(sample: s, accentColor: accentColor),
-            ],
-        ],
-      ),
-    );
-  }
-}
-
-class _AuditItemRow extends StatelessWidget {
-  const _AuditItemRow({required this.sample, required this.accentColor});
-
-  final ProbeSample sample;
-  final Color accentColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final timeStr =
-        '${sample.timestamp.hour.toString().padLeft(2, '0')}:${sample.timestamp.minute.toString().padLeft(2, '0')}:${sample.timestamp.second.toString().padLeft(2, '0')}';
-    final isOk = sample.status == HitStatus.ok;
-    final statusColor = isOk ? accentColor : (sample.status == HitStatus.timeout ? const Color(0xFFF59E0B) : kFail);
-    final statusLabel = isOk ? 'OK' : (sample.status == HitStatus.timeout ? 'TIMEOUT' : 'FAIL');
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Text(
-            timeStr,
-            style: const TextStyle(
-              fontFamily: 'Space Mono',
-              color: kMute,
-              fontSize: 10.5,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: statusColor.withValues(alpha: 0.3)),
-            ),
-            child: Text(
-              statusLabel,
-              style: TextStyle(
-                fontFamily: 'Space Mono',
-                color: statusColor,
-                fontWeight: FontWeight.w700,
-                fontSize: 9,
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              sample.detail != null && sample.detail!.isNotEmpty
-                  ? sample.detail!
-                  : (isOk ? 'Success' : 'Error'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 11,
-                color: kPaper,
-              ),
-            ),
-          ),
-          Text(
-            sample.ms != null ? '${sample.ms}ms' : '-',
-            style: TextStyle(
-              fontFamily: 'Space Mono',
-              color: statusColor,
-              fontWeight: FontWeight.w700,
-              fontSize: 11,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  bool shouldRepaint(HistoryPainter oldDelegate) =>
+      oldDelegate.samples != samples;
 }

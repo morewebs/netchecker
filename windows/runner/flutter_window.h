@@ -23,6 +23,8 @@ class FlutterWindow : public Win32Window {
 
  private:
   void RegisterWindowChannel();
+  RECT restore_bounds_{};
+  bool compact_ = false;
 
   flutter::DartProject project_;
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
